@@ -1,0 +1,40 @@
+[Unit]
+Description=Portway remote input controller
+Documentation=https://github.com/heptanal/portway
+After=network-online.target systemd-modules-load.service
+Wants=network-online.target systemd-modules-load.service
+
+[Service]
+Type=simple
+User=portway
+Group=portway
+ExecStart=/usr/local/bin/portway --config /etc/portway/config.toml serve
+Restart=always
+RestartSec=2s
+StateDirectory=portway
+StateDirectoryMode=0700
+UMask=0077
+TimeoutStopSec=10s
+
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+PrivateTmp=yes
+ProtectSystem=strict
+ProtectHome=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+RestrictNamespaces=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+DevicePolicy=closed
+DeviceAllow=/dev/uinput rw
+
+[Install]
+WantedBy=multi-user.target

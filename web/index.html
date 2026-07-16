@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+    <meta name="color-scheme" content="dark light">
+    <title>Portway Controller</title>
+    <link rel="stylesheet" href="/style.css">
+    <script src="/app.js" defer></script>
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div class="wordmark" aria-label="Portway">
+          <span class="mark" aria-hidden="true"></span>
+          <span>PORTWAY</span>
+        </div>
+        <button id="connection" class="connection" type="button" aria-label="Connection status; tap to log out and pair again">
+          <span class="status-dot" aria-hidden="true"></span>
+          <span id="status-text">Offline</span>
+        </button>
+        <button id="release-all" class="release" type="button">Release all</button>
+      </header>
+
+      <section id="touch-mode" class="mode active" aria-label="Mouse controller">
+        <div id="touchpad" class="touchpad" role="application" aria-label="Remote touchpad">
+          <div class="touchpad-copy">
+            <span class="touch-icon" aria-hidden="true"></span>
+            <strong>Touch to move</strong>
+            <small>Tap to click · two fingers to scroll</small>
+          </div>
+          <div id="backend-warning" class="backend-warning" hidden>Input backend unavailable</div>
+        </div>
+
+        <div class="mouse-row" aria-label="Mouse buttons">
+          <button class="mouse-button" data-button="left" type="button"><span>L</span>Left</button>
+          <button class="mouse-button compact" data-button="middle" type="button"><span>M</span>Middle</button>
+          <button class="mouse-button" data-button="right" type="button"><span>R</span>Right</button>
+          <button id="drag-lock" class="mouse-button drag" type="button" aria-pressed="false"><span>↳</span>Drag lock</button>
+        </div>
+      </section>
+
+      <section id="keyboard-mode" class="mode keyboard-mode" aria-label="Keyboard controller" hidden>
+        <label class="text-entry">
+          <span>Type on host</span>
+          <textarea id="text-input" rows="2" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Tap here to open your keyboard"></textarea>
+        </label>
+
+        <div class="key-section">
+          <p>Modifiers <small>Tap to latch · hold for momentary</small></p>
+          <div class="modifier-row">
+            <button class="key modifier" data-modifier="left_ctrl" type="button" aria-pressed="false">Ctrl</button>
+            <button class="key modifier" data-modifier="left_alt" type="button" aria-pressed="false">Alt</button>
+            <button class="key modifier" data-modifier="left_shift" type="button" aria-pressed="false">Shift</button>
+            <button class="key modifier" data-modifier="left_meta" type="button" aria-pressed="false">Super</button>
+          </div>
+        </div>
+
+        <div class="key-section">
+          <p>Essentials</p>
+          <div class="key-grid essentials">
+            <button class="key" data-key="escape" type="button">Esc</button>
+            <button class="key" data-key="tab" type="button">Tab</button>
+            <button class="key wide" data-key="enter" type="button">Enter</button>
+            <button class="key wide" data-key="backspace" type="button">Backspace</button>
+            <button class="key" data-key="delete" type="button">Del</button>
+            <button class="key" data-key="home" type="button">Home</button>
+            <button class="key" data-key="end" type="button">End</button>
+            <button class="key" data-key="page_up" type="button">PgUp</button>
+            <button class="key" data-key="page_down" type="button">PgDn</button>
+          </div>
+        </div>
+
+        <div class="navigation-block" aria-label="Arrow keys">
+          <button class="key arrow up" data-key="arrow_up" type="button" aria-label="Arrow up">↑</button>
+          <button class="key arrow left" data-key="arrow_left" type="button" aria-label="Arrow left">←</button>
+          <button class="key arrow down" data-key="arrow_down" type="button" aria-label="Arrow down">↓</button>
+          <button class="key arrow right" data-key="arrow_right" type="button" aria-label="Arrow right">→</button>
+        </div>
+
+        <details class="key-drawer">
+          <summary>Function and media keys</summary>
+          <div id="function-keys" class="key-grid function-grid"></div>
+          <div id="media-keys" class="key-grid media-grid"></div>
+        </details>
+      </section>
+
+      <details class="settings">
+        <summary>Control settings</summary>
+        <label for="sensitivity">Touch sensitivity <output id="sensitivity-value">1.0×</output></label>
+        <input id="sensitivity" type="range" min="0.3" max="2.5" step="0.1" value="1">
+        <p>Server sensitivity is applied separately from this device setting.</p>
+      </details>
+
+      <nav class="mode-switch" aria-label="Controller mode">
+        <button class="active" data-mode="touch" type="button" aria-pressed="true">
+          <span aria-hidden="true">⌁</span> Touchpad
+        </button>
+        <button data-mode="keyboard" type="button" aria-pressed="false">
+          <span aria-hidden="true">⌨</span> Keyboard
+        </button>
+      </nav>
+    </main>
+
+    <dialog id="auth-dialog" class="auth-dialog">
+      <form id="auth-form" method="dialog">
+        <div class="auth-mark" aria-hidden="true"></div>
+        <h1>Connect to Portway</h1>
+        <p>Open the temporary startup link or enter its pairing code. The setup token is accepted for recovery.</p>
+        <label for="pair-input">Pairing code</label>
+        <input id="pair-input" name="code" type="password" required autocomplete="one-time-code" inputmode="text">
+        <button id="pair-submit" type="submit">Pair this device</button>
+        <small>HTTPS protects pairing and controller input in transit.</small>
+      </form>
+    </dialog>
+
+    <div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+  </body>
+</html>

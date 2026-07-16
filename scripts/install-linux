@@ -1,0 +1,333 @@
+#!/bin/sh
+set -eu
+
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+PROFILE=
+BINARY=
+PORT=2721
+AUTH=token
+ACCEPT_RISK=no
+FIREWALL=auto
+TLS_CERT=
+TLS_KEY=
+YES=no
+START=yes
+FORCE_CONFIG=no
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/install-linux [options]
+
+Guided installation for conventional systemd Linux distributions.
+
+Options:
+  --profile lan|local|https   Exposure profile (interactive if omitted)
+  --binary PATH              Release binary to install
+  --port PORT                Listen port (default: 2721)
+  --tls-cert PATH            PEM certificate chain for the https profile
+  --tls-key PATH             PEM private key for the https profile
+  --auth token|disabled      Authentication mode (default: token)
+  --accept-risk              Required with --auth disabled
+  --firewall auto|skip       Open a detected active firewall or leave it alone
+  --force-config             Replace an existing /etc/portway/config.toml
+  --no-start                 Install without enabling or starting the service
+  --yes                      Accept defaults without prompts
+  -h, --help                 Show this help
+
+Profiles:
+  lan     Authenticated HTTP on the LAN. Easiest, but transport is unencrypted.
+  local   Listen on localhost only for a same-host proxy, VPN, or SSH tunnel.
+  https   Authenticated HTTPS on the LAN using an existing trusted certificate.
+EOF
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+  for argument in "$@"; do
+    case "$argument" in -h|--help) usage; exit 0 ;; esac
+  done
+  if ! command -v sudo >/dev/null 2>&1; then
+    echo "this installer needs root; rerun it as root" >&2
+    exit 1
+  fi
+  exec sudo "$0" "$@"
+fi
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --profile) [ "$#" -ge 2 ] || { echo "--profile requires a value" >&2; exit 2; }; PROFILE=$2; shift 2 ;;
+    --binary) [ "$#" -ge 2 ] || { echo "--binary requires a value" >&2; exit 2; }; BINARY=$2; shift 2 ;;
+    --port) [ "$#" -ge 2 ] || { echo "--port requires a value" >&2; exit 2; }; PORT=$2; shift 2 ;;
+    --tls-cert) [ "$#" -ge 2 ] || { echo "--tls-cert requires a value" >&2; exit 2; }; TLS_CERT=$2; shift 2 ;;
+    --tls-key) [ "$#" -ge 2 ] || { echo "--tls-key requires a value" >&2; exit 2; }; TLS_KEY=$2; shift 2 ;;
+    --auth) [ "$#" -ge 2 ] || { echo "--auth requires a value" >&2; exit 2; }; AUTH=$2; shift 2 ;;
+    --accept-risk) ACCEPT_RISK=yes; shift ;;
+    --firewall) [ "$#" -ge 2 ] || { echo "--firewall requires a value" >&2; exit 2; }; FIREWALL=$2; shift 2 ;;
+    --force-config) FORCE_CONFIG=yes; shift ;;
+    --no-start) START=no; shift ;;
+    --yes) YES=yes; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+case "$PORT" in
+  ''|*[!0-9]*) echo "port must be an integer between 1 and 65535" >&2; exit 2 ;;
+esac
+[ "$PORT" -ge 1 ] && [ "$PORT" -le 65535 ] || {
+  echo "port must be between 1 and 65535" >&2
+  exit 2
+}
+case "$PROFILE" in ''|lan|local|https) ;; *) echo "invalid profile: $PROFILE" >&2; exit 2 ;; esac
+case "$AUTH" in token|disabled) ;; *) echo "invalid authentication mode: $AUTH" >&2; exit 2 ;; esac
+case "$FIREWALL" in auto|skip) ;; *) echo "invalid firewall mode: $FIREWALL" >&2; exit 2 ;; esac
+
+if [ -e /etc/NIXOS ] || [ -e /run/current-system/nixos-version ]; then
+  echo "NixOS detected. Use packaging/nixos/portway.nix; imperative installation would not be declarative." >&2
+  echo "See docs/NIXOS.md." >&2
+  exit 1
+fi
+
+STATE=/etc/portway/install-state
+PREVIOUS_PROFILE=
+PREVIOUS_PORT=
+PREVIOUS_FIREWALL=none
+PREVIOUS_CREATED_USER=no
+PREVIOUS_CREATED_GROUP=no
+if [ -r "$STATE" ]; then
+  PREVIOUS_PROFILE=$(sed -n 's/^profile=//p' "$STATE" | head -n 1)
+  PREVIOUS_PORT=$(sed -n 's/^port=//p' "$STATE" | head -n 1)
+  PREVIOUS_FIREWALL=$(sed -n 's/^firewall=//p' "$STATE" | head -n 1)
+  PREVIOUS_CREATED_USER=$(sed -n 's/^created_user=//p' "$STATE" | head -n 1)
+  PREVIOUS_CREATED_GROUP=$(sed -n 's/^created_group=//p' "$STATE" | head -n 1)
+fi
+case "$PREVIOUS_PROFILE" in lan|local|https) ;; *) PREVIOUS_PROFILE= ;; esac
+case "$PREVIOUS_PORT" in ''|*[!0-9]*) PREVIOUS_PORT= ;; esac
+if [ -n "$PREVIOUS_PORT" ] && {
+  [ "$PREVIOUS_PORT" -lt 1 ] || [ "$PREVIOUS_PORT" -gt 65535 ];
+}; then
+  PREVIOUS_PORT=
+fi
+case "$PREVIOUS_FIREWALL" in none|ufw|firewalld) ;; *) PREVIOUS_FIREWALL=none ;; esac
+case "$PREVIOUS_CREATED_USER" in yes|no) ;; *) PREVIOUS_CREATED_USER=no ;; esac
+case "$PREVIOUS_CREATED_GROUP" in yes|no) ;; *) PREVIOUS_CREATED_GROUP=no ;; esac
+
+WRITE_CONFIG=yes
+if [ -e /etc/portway/config.toml ] && [ "$FORCE_CONFIG" != yes ]; then
+  WRITE_CONFIG=no
+  if [ -n "$PREVIOUS_PROFILE" ]; then
+    PROFILE=$PREVIOUS_PROFILE
+  elif [ -z "$PROFILE" ]; then
+    PROFILE=existing
+  fi
+  if [ -n "$PREVIOUS_PORT" ]; then
+    PORT=$PREVIOUS_PORT
+  fi
+fi
+
+if [ -z "$PROFILE" ]; then
+  if [ "$YES" = yes ] || [ ! -t 0 ]; then
+    PROFILE=lan
+  else
+    printf '\nChoose how Portway should be reachable:\n'
+    printf '  1) LAN: authenticated HTTP, lowest friction, trusted networks only\n'
+    printf '  2) Local: localhost only, for a proxy, VPN, or SSH tunnel\n'
+    printf '  3) HTTPS: LAN access with your trusted certificate\n'
+    printf 'Selection [1]: '
+    read -r choice
+    case "$choice" in
+      ''|1) PROFILE=lan ;;
+      2) PROFILE=local ;;
+      3) PROFILE=https ;;
+      *) echo "invalid selection" >&2; exit 2 ;;
+    esac
+  fi
+fi
+
+if [ "$AUTH" = disabled ] && [ "$ACCEPT_RISK" != yes ]; then
+  echo "refusing unauthenticated remote control without --accept-risk" >&2
+  exit 2
+fi
+if [ "$WRITE_CONFIG" = yes ] && [ "$PROFILE" = https ]; then
+  [ -n "$TLS_CERT" ] && [ -n "$TLS_KEY" ] || {
+    echo "the https profile requires --tls-cert and --tls-key" >&2
+    exit 2
+  }
+  [ -r "$TLS_CERT" ] && [ -r "$TLS_KEY" ] || {
+    echo "TLS certificate or key is not readable" >&2
+    exit 2
+  }
+fi
+
+if [ -z "$BINARY" ]; then
+  if [ -x "$ROOT/target/release/portway" ]; then
+    BINARY=$ROOT/target/release/portway
+  elif [ -x "$ROOT/portway" ]; then
+    BINARY=$ROOT/portway
+  else
+    echo "release binary not found; run 'cargo build --release --locked' or pass --binary" >&2
+    exit 1
+  fi
+fi
+[ -x "$BINARY" ] || { echo "binary is not executable: $BINARY" >&2; exit 1; }
+
+for command in install systemctl useradd usermod groupadd getent udevadm runuser; do
+  command -v "$command" >/dev/null 2>&1 || {
+    echo "required command not found: $command" >&2
+    exit 1
+  }
+done
+systemctl --version >/dev/null 2>&1 || { echo "systemd is required" >&2; exit 1; }
+"$BINARY" --version >/dev/null
+
+if [ "$YES" != yes ] && [ -t 0 ]; then
+  printf '\nInstall Portway with profile %s on TCP port %s? [Y/n] ' "$PROFILE" "$PORT"
+  read -r confirm
+  case "$confirm" in n|N|no|NO) echo "installation cancelled"; exit 0 ;; esac
+fi
+
+CREATED_GROUP=$PREVIOUS_CREATED_GROUP
+CREATED_USER=$PREVIOUS_CREATED_USER
+if ! getent group portway >/dev/null 2>&1; then
+  groupadd --system portway
+  CREATED_GROUP=yes
+fi
+if ! getent passwd portway >/dev/null 2>&1; then
+  NOLOGIN=$(command -v nologin || printf '%s' /bin/false)
+  useradd --system --gid portway --home-dir /var/lib/portway --create-home --shell "$NOLOGIN" portway
+  CREATED_USER=yes
+else
+  usermod -a -G portway portway
+fi
+
+install -d -m0750 -o root -g portway /etc/portway
+install -d -m0700 -o portway -g portway /var/lib/portway
+install -Dm0755 "$BINARY" /usr/local/bin/portway
+install -Dm0644 "$ROOT/packaging/systemd/portway.service" /etc/systemd/system/portway.service
+install -Dm0644 "$ROOT/packaging/udev/70-portway-uinput.rules" /etc/udev/rules.d/70-portway-uinput.rules
+install -Dm0644 "$ROOT/packaging/modules-load/portway.conf" /etc/modules-load.d/portway.conf
+
+LISTEN=0.0.0.0
+[ "$PROFILE" = local ] && LISTEN=127.0.0.1
+
+CONFIG_REPLACED=no
+if [ "$WRITE_CONFIG" = yes ]; then
+  if [ -e /etc/portway/config.toml ]; then
+    cp -p /etc/portway/config.toml /etc/portway/config.toml.bak
+  fi
+  umask 0077
+  {
+    printf 'listen = "%s"\n' "$LISTEN"
+    printf 'port = %s\n' "$PORT"
+    printf 'auth_mode = "%s"\n' "$AUTH"
+    printf 'token_file = "/var/lib/portway/token"\n'
+    printf 'backend = "uinput"\n'
+    printf 'max_clients = 1\n'
+    printf 'pointer_sensitivity = 1.0\n'
+    printf 'log_level = "info"\n'
+    printf 'pairing_code_ttl_seconds = 300\n'
+    printf 'session_ttl_seconds = 43200\n'
+    if [ "$PROFILE" = https ]; then
+      install -d -m0700 -o portway -g portway /var/lib/portway/tls
+      install -m0644 -o portway -g portway "$TLS_CERT" /var/lib/portway/tls/cert.pem
+      install -m0600 -o portway -g portway "$TLS_KEY" /var/lib/portway/tls/key.pem
+      printf 'tls_cert = "/var/lib/portway/tls/cert.pem"\n'
+      printf 'tls_key = "/var/lib/portway/tls/key.pem"\n'
+    fi
+  } > /etc/portway/config.toml
+  chown root:portway /etc/portway/config.toml
+  chmod 0640 /etc/portway/config.toml
+  CONFIG_REPLACED=yes
+else
+  echo "Preserving existing /etc/portway/config.toml (use --force-config to replace it)."
+  if [ "$PREVIOUS_FIREWALL" = none ]; then
+    FIREWALL=skip
+  fi
+fi
+
+if command -v modprobe >/dev/null 2>&1; then
+  modprobe uinput
+fi
+udevadm control --reload-rules
+udevadm trigger --subsystem-match=misc --action=add
+
+if [ ! -c /dev/uinput ]; then
+  echo "/dev/uinput was not created; check kernel uinput support" >&2
+  exit 1
+fi
+
+INSTALLED_AUTH=disabled
+if runuser -u portway -- /usr/local/bin/portway --config /etc/portway/config.toml token >/dev/null 2>&1; then
+  INSTALLED_AUTH=token
+elif [ "$CONFIG_REPLACED" = yes ] && [ "$AUTH" = token ]; then
+  echo "failed to create the Portway setup token" >&2
+  exit 1
+fi
+
+FIREWALL_ADDED=$PREVIOUS_FIREWALL
+if [ "$WRITE_CONFIG" = yes ] && [ "$PREVIOUS_FIREWALL" != none ] && {
+  [ "$PREVIOUS_PORT" != "$PORT" ] || [ "$PROFILE" = local ] || [ "$FIREWALL" = skip ];
+}; then
+  if [ "$PREVIOUS_FIREWALL" = ufw ] && command -v ufw >/dev/null 2>&1; then
+    ufw --force delete allow "${PREVIOUS_PORT}/tcp" >/dev/null
+  elif [ "$PREVIOUS_FIREWALL" = firewalld ] && command -v firewall-cmd >/dev/null 2>&1; then
+    firewall-cmd --quiet --permanent --remove-port="${PREVIOUS_PORT}/tcp"
+    firewall-cmd --quiet --reload
+  else
+    echo "cannot remove the previous installer-owned firewall rule; remove it manually first" >&2
+    exit 1
+  fi
+  FIREWALL_ADDED=none
+fi
+if [ "$PROFILE" != local ] && [ "$FIREWALL" = auto ]; then
+  if command -v ufw >/dev/null 2>&1 && ufw status 2>/dev/null | grep -q '^Status: active'; then
+    if ! ufw status 2>/dev/null | grep -q "^${PORT}/tcp"; then
+      ufw allow "${PORT}/tcp" comment Portway
+      FIREWALL_ADDED=ufw
+    fi
+  elif command -v firewall-cmd >/dev/null 2>&1 && firewall-cmd --state >/dev/null 2>&1; then
+    if ! firewall-cmd --quiet --query-port="${PORT}/tcp"; then
+      firewall-cmd --quiet --permanent --add-port="${PORT}/tcp"
+      firewall-cmd --quiet --reload
+      FIREWALL_ADDED=firewalld
+    fi
+  else
+    echo "No active ufw/firewalld detected; verify any nftables or distribution firewall manually."
+  fi
+fi
+
+umask 0077
+{
+  printf 'profile=%s\n' "$PROFILE"
+  printf 'port=%s\n' "$PORT"
+  printf 'firewall=%s\n' "$FIREWALL_ADDED"
+  printf 'created_user=%s\n' "$CREATED_USER"
+  printf 'created_group=%s\n' "$CREATED_GROUP"
+} > "$STATE"
+chown root:root "$STATE"
+
+systemctl daemon-reload
+if [ "$START" = yes ]; then
+  systemctl enable portway.service
+  systemctl restart portway.service
+  if ! systemctl is-active --quiet portway.service; then
+    echo "Portway did not start. Inspect: journalctl -u portway.service -n 100" >&2
+    exit 1
+  fi
+fi
+
+printf '\nPortway installation complete.\n'
+printf 'Service: systemctl status portway.service\n'
+printf 'Logs:    journalctl -u portway.service -f\n'
+if [ "$START" = yes ] && [ "$INSTALLED_AUTH" = token ]; then
+  printf '\n'
+  runuser -u portway -- /usr/local/bin/portway --config /etc/portway/config.toml pair
+elif [ "$START" = yes ]; then
+  printf '\nWarning: authentication is disabled; every network peer that can connect has control.\n'
+elif [ "$START" = no ]; then
+  printf 'Start:   systemctl enable --now portway.service\n'
+fi
+if [ "$PROFILE" = lan ]; then
+  printf '\nWarning: controller traffic is authenticated but unencrypted. Use only on a trusted LAN.\n'
+elif [ "$PROFILE" = https ]; then
+  printf '\nController devices must trust the CA and certificate name used for this server.\n'
+fi

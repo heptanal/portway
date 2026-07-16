@@ -1,0 +1,108 @@
+#!/bin/sh
+set -eu
+
+PURGE=no
+YES=no
+
+usage() {
+  cat <<'EOF'
+Usage: scripts/uninstall-linux [--purge] [--yes]
+
+Remove the systemd service, binary, udev rule, modules-load entry, and any
+firewall rule created by scripts/install-linux. Configuration, credentials, TLS
+material, and the service account are preserved unless --purge is specified.
+
+  --purge   Permanently remove /etc/portway, /var/lib/portway, and installer-owned user/group
+  --yes     Do not prompt
+  -h        Show this help
+EOF
+}
+
+if [ "$(id -u)" -ne 0 ]; then
+  for argument in "$@"; do
+    case "$argument" in -h|--help) usage; exit 0 ;; esac
+  done
+  command -v sudo >/dev/null 2>&1 || { echo "rerun this command as root" >&2; exit 1; }
+  exec sudo "$0" "$@"
+fi
+
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --purge) PURGE=yes; shift ;;
+    --yes) YES=yes; shift ;;
+    -h|--help) usage; exit 0 ;;
+    *) echo "unknown option: $1" >&2; usage >&2; exit 2 ;;
+  esac
+done
+
+if [ -e /etc/NIXOS ] || [ -e /run/current-system/nixos-version ]; then
+  echo "NixOS detected. Disable services.portway and rebuild the system instead." >&2
+  exit 1
+fi
+
+if [ "$YES" != yes ] && [ -t 0 ]; then
+  if [ "$PURGE" = yes ]; then
+    printf 'Uninstall Portway and permanently delete all credentials/configuration? [y/N] '
+    read -r confirm
+    case "$confirm" in y|Y|yes|YES) ;; *) echo "uninstall cancelled"; exit 0 ;; esac
+  else
+    printf 'Uninstall Portway while preserving configuration and credentials? [Y/n] '
+    read -r confirm
+    case "$confirm" in n|N|no|NO) echo "uninstall cancelled"; exit 0 ;; esac
+  fi
+fi
+
+STATE=/etc/portway/install-state
+PORT=
+FIREWALL=none
+CREATED_USER=no
+CREATED_GROUP=no
+if [ -r "$STATE" ]; then
+  PORT=$(sed -n 's/^port=//p' "$STATE" | head -n 1)
+  FIREWALL=$(sed -n 's/^firewall=//p' "$STATE" | head -n 1)
+  CREATED_USER=$(sed -n 's/^created_user=//p' "$STATE" | head -n 1)
+  CREATED_GROUP=$(sed -n 's/^created_group=//p' "$STATE" | head -n 1)
+fi
+case "$PORT" in ''|*[!0-9]*) PORT=2721 ;; esac
+case "$FIREWALL" in none|ufw|firewalld) ;; *) FIREWALL=none ;; esac
+case "$CREATED_USER" in yes|no) ;; *) CREATED_USER=no ;; esac
+case "$CREATED_GROUP" in yes|no) ;; *) CREATED_GROUP=no ;; esac
+
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl disable --now portway.service >/dev/null 2>&1 || true
+fi
+
+if [ "$FIREWALL" = ufw ] && command -v ufw >/dev/null 2>&1; then
+  ufw --force delete allow "${PORT}/tcp" >/dev/null 2>&1 || true
+elif [ "$FIREWALL" = firewalld ] && command -v firewall-cmd >/dev/null 2>&1; then
+  firewall-cmd --quiet --permanent --remove-port="${PORT}/tcp" >/dev/null 2>&1 || true
+  firewall-cmd --quiet --reload >/dev/null 2>&1 || true
+fi
+
+rm -f /etc/systemd/system/portway.service
+rm -f /etc/udev/rules.d/70-portway-uinput.rules
+rm -f /etc/modules-load.d/portway.conf
+rm -f /usr/local/bin/portway
+
+if command -v systemctl >/dev/null 2>&1; then
+  systemctl daemon-reload
+  systemctl reset-failed portway.service >/dev/null 2>&1 || true
+fi
+if command -v udevadm >/dev/null 2>&1; then
+  udevadm control --reload-rules
+  udevadm trigger --subsystem-match=misc --action=add
+fi
+
+if [ "$PURGE" = yes ]; then
+  rm -rf /etc/portway /var/lib/portway
+  if [ "$CREATED_USER" = yes ] && getent passwd portway >/dev/null 2>&1; then
+    userdel portway
+  fi
+  if [ "$CREATED_GROUP" = yes ] && getent group portway >/dev/null 2>&1; then
+    groupdel portway >/dev/null 2>&1 || true
+  fi
+  echo "Portway uninstalled; configuration and credentials purged."
+else
+  echo "Portway uninstalled. Preserved: /etc/portway and /var/lib/portway"
+  echo "Run '$0 --purge' later to delete credentials and installer-owned accounts."
+fi

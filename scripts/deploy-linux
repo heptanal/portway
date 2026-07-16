@@ -1,0 +1,30 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 1 ] || [ -z "$1" ]; then
+  echo "usage: $0 user@linux-host" >&2
+  exit 2
+fi
+
+case "$1" in
+  -*) echo "host must not begin with '-'" >&2; exit 2 ;;
+esac
+
+ROOT=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+HOST=$1
+REMOTE_DIR=${PORTWAY_REMOTE_DIR:-portway-build}
+
+case "$REMOTE_DIR" in
+  ""|.|/|~) echo "PORTWAY_REMOTE_DIR must name a dedicated deployment directory" >&2; exit 2 ;;
+  *[!A-Za-z0-9_./~-]*) echo "PORTWAY_REMOTE_DIR contains unsupported characters" >&2; exit 2 ;;
+esac
+
+rsync --archive \
+  --exclude .git \
+  --exclude target \
+  "$ROOT/" "$HOST:$REMOTE_DIR/"
+
+# REMOTE_DIR is intentionally expanded locally after the strict validation above.
+# shellcheck disable=SC2029
+ssh "$HOST" "cd '$REMOTE_DIR' && cargo build --release --locked"
+echo "remote binary: $HOST:$REMOTE_DIR/target/release/portway"

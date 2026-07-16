@@ -1,0 +1,32 @@
+# CLI/PORTWAY_* values override this file. Defaults are shown here explicitly.
+listen = "0.0.0.0"
+port = 2721
+
+# "token" is the secure default. "disabled" is only for isolated testing.
+auth_mode = "token"
+token_file = "/var/lib/portway/token"
+
+# Configure both paths to enable native HTTPS. The certificate must be trusted by
+# controller devices and cover the hostname or IP used in the browser.
+# tls_cert = "/var/lib/portway/tls/cert.pem"
+# tls_key = "/var/lib/portway/tls/key.pem"
+
+# Signed pairing codes are short-lived and single-use. Controller sessions are
+# memory-only and invalidated by logout, expiry, token rotation plus restart, or
+# server restart.
+pairing_code_ttl_seconds = 300
+session_ttl_seconds = 43200
+
+# "auto" tries uinput on Linux and starts degraded if unavailable.
+# "uinput" fails startup if uinput cannot initialize; "mock" records only.
+backend = "auto"
+max_clients = 1
+pointer_sensitivity = 1.0
+log_level = "info"
+
+# Same-host browser origins are accepted automatically. Add only trusted reverse
+# proxy origins here; origins must be exact scheme + authority values.
+allowed_origins = []
+
+mouse_name = "Portway virtual mouse"
+keyboard_name = "Portway virtual keyboard"

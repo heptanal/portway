@@ -1,0 +1,51 @@
+[package]
+name = "portway"
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.97"
+description = "Self-hosted browser remote mouse and keyboard controller for Linux"
+license = "MIT"
+repository = "https://github.com/heptanal/portway"
+readme = "README.md"
+
+[dependencies]
+anyhow = "1.0"
+axum = { version = "0.8", features = ["ws"] }
+axum-server = { version = "0.8", features = ["tls-rustls-no-provider"] }
+base64 = "0.22"
+clap = { version = "4.5", features = ["derive", "env"] }
+futures-util = "0.3"
+getrandom = "0.3"
+http = "1.3"
+ring = "0.17"
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+subtle = "2.6"
+thiserror = "2.0"
+tokio = { version = "1.46", features = ["macros", "net", "rt-multi-thread", "signal", "sync", "time"] }
+toml = "0.9"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+
+[target.'cfg(target_os = "linux")'.dependencies]
+libc = "0.2"
+
+[dev-dependencies]
+tempfile = "3.20"
+tokio-tungstenite = "0.29"
+tower = { version = "0.5", features = ["util"] }
+
+[profile.release]
+codegen-units = 1
+lto = "thin"
+strip = true
+
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }
+pedantic = { level = "warn", priority = -1 }
+missing_errors_doc = "allow"
+missing_panics_doc = "allow"

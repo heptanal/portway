@@ -1,0 +1,3 @@
+# Membership in this group permits kernel-level synthetic input. Keep it narrow.
+KERNEL=="uinput", SUBSYSTEM=="misc", GROUP="portway", MODE="0660"
+
