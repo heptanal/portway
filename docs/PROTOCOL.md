@@ -13,7 +13,8 @@ The browser obtains a session through `POST /api/pair` with a strict JSON body:
 ```
 
 The request body is limited to 512 bytes and must have a same-host or explicitly
-allowed `Origin`. Eight failed attempts per source IP are accepted per minute.
+allowed `Origin`. At most eight total attempts per source IP are accepted in a
+one-minute window; a successful exchange clears that address's window.
 A valid temporary code is HMAC-signed by the setup secret, time-bounded, and
 consumed once. Success sets an expiring `HttpOnly`, `SameSite=Strict` cookie;
 HTTPS additionally sets `Secure`. `GET /api/session` reports browser session

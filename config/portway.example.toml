@@ -1,4 +1,4 @@
-# CLI/PORTWAY_* values override this file. Defaults are shown here explicitly.
+# For `serve`, CLI/PORTWAY_* values override this file. Defaults are explicit.
 listen = "0.0.0.0"
 port = 2721
 

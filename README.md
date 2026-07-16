@@ -80,11 +80,11 @@ From a phone on the same LAN open the reported address, for example:
 http://192.168.1.42:2721/?pair=<temporary-code>
 ```
 
-The browser exchanges the signed code for an `HttpOnly` session cookie and
-immediately removes the code from its address bar. The persistent setup token is
-also accepted in the pairing form for recovery, but is never stored by JavaScript
-or sent in a WebSocket URL. To create or deliberately display it as the same user
-running the service:
+The browser removes the code from its address bar, exchanges it for an `HttpOnly`
+session cookie, and does not persist the submitted credential in browser storage.
+The persistent setup token is also accepted in the pairing form for recovery.
+Neither credential is sent in a WebSocket URL. To create or deliberately display
+the setup token as the same user running the service:
 
 ```sh
 sudo -u portway portway --config /etc/portway/config.toml token
@@ -118,7 +118,7 @@ F1-F12, and common media keys.
 
 ## Configuration
 
-Precedence is predictable:
+For `serve`, precedence is predictable:
 
 ```text
 CLI flags and PORTWAY_* environment variables > TOML file > defaults
@@ -126,7 +126,9 @@ CLI flags and PORTWAY_* environment variables > TOML file > defaults
 
 The default file is `$XDG_CONFIG_HOME/portway/config.toml`, normally
 `~/.config/portway/config.toml`. Pass another with `--config`. See
-[config/portway.example.toml](config/portway.example.toml).
+[config/portway.example.toml](config/portway.example.toml). The complete command,
+flag, environment-variable, and validation reference is in
+[docs/CLI.md](docs/CLI.md).
 
 ```sh
 portway --config ./config/portway.example.toml serve \
@@ -222,6 +224,7 @@ available across session boundaries. See [docs/TROUBLESHOOTING.md](docs/TROUBLES
 ## Project documents
 
 - [Architecture](docs/ARCHITECTURE.md)
+- [Command-line reference](docs/CLI.md)
 - [Installation and lifecycle](docs/INSTALL.md)
 - [Protocol v1](docs/PROTOCOL.md)
 - [Security model](docs/SECURITY.md)

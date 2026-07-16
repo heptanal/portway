@@ -55,7 +55,8 @@ distribution firewalls are reported but not modified.
 The HTTPS profile copies a snapshot of the certificate and key into
 `/var/lib/portway/tls`. Renewed source files are not copied automatically yet;
 rerun the installer with `--force-config` or update those files and restart the
-service. See [HTTPS.md](HTTPS.md).
+service. See [HTTPS.md](HTTPS.md). Every installer, uninstaller, and application
+flag is listed in [CLI.md](CLI.md).
 
 ## Pair another controller
 
@@ -116,9 +117,11 @@ Permanent removal requires an explicit purge confirmation:
 scripts/uninstall-linux --purge
 ```
 
-The uninstaller removes only a firewall rule and service account that the
-installer recorded as created. It does not unload `uinput`, which another local
-application may still be using.
+The uninstaller removes only a firewall rule that the installer recorded as
+created. A normal uninstall preserves the service account and state; `--purge`
+removes the account/group only if the installer recorded creating them. The
+uninstaller does not unload `uinput`, which another local application may still
+be using.
 
 ## Availability limits
 
