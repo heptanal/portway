@@ -7,7 +7,7 @@ sessions, TLS private key, and uinput group membership like credentials.
 
 - Authentication is enabled and a 256-bit setup token is generated on first use.
 - The setup-token file is created with owner-only permissions (`0600` on Unix).
-- Startup pairing links contain an HMAC-signed, single-use code that expires in five minutes.
+- `portway pair` prints a random six-digit, single-use code that expires in five minutes.
 - Browsers receive a random `HttpOnly`, `SameSite=Strict` session cookie.
 - The server listens on `0.0.0.0:2721` for LAN usability.
 - One controller is permitted at a time.
@@ -27,19 +27,20 @@ That mode is intended for isolated test environments and logs a prominent warnin
 
 ## Pairing and token handling
 
-The persistent setup token never appears in automatic startup URLs. Each pairing
-code contains an expiry and random nonce authenticated with HMAC-SHA256 by the
-setup secret. It expires and is consumed by its first successful exchange. This
-allows the local `portway pair` command to issue a URL without restarting or
-contacting the server, while the persistent secret never leaves its `0600` file.
-The running server remembers used codes until expiry to reject replay. The browser
-removes the code from the address bar before exchange and receives a 12-hour
-memory-backed session by default. Server restart invalidates all sessions.
+The persistent setup token and pairing code never appear in an HTTP or WebSocket
+URL. `portway pair` generates a uniformly random six-digit code and writes a
+`0600` record beside the token, normally `/var/lib/portway/token.pairing`. The
+record contains the exact expiry and an HMAC-SHA256 of the expiry and code; it
+does not contain the six-digit plaintext. The CLI can therefore issue a code
+without contacting or restarting the server, while the server can validate it
+against the shared protected state.
 
-The replay cache is deliberately memory-only. Restarting the server during a
-code's short validity window also resets that cache, so an already exchanged code
-could be accepted once by the new process until it expires. Use HTTPS anywhere a
-network peer could observe the temporary URL.
+Only one pairing code is outstanding. Issuing another atomically replaces the
+record and invalidates the previous code. A successful exchange deletes the
+record before creating the session, making the code single-use across server
+restarts. Expired records are deleted when checked. The browser receives a
+12-hour memory-backed session by default; server restart invalidates all sessions
+but does not make a consumed code reusable.
 
 Run `portway token` as the service user to create or display the recovery token
 deliberately. Entering it in the browser exchanges it for a session; the
@@ -47,7 +48,9 @@ credential is handled transiently by the page but is not persisted in browser
 storage. Stop Portway before replacing the token file, then restart so the
 in-memory credential and all sessions are replaced together.
 
-Pairing accepts eight total attempts per source IP in a one-minute window.
+Six decimal digits provide one million possible codes, so online rate limiting
+is an essential part of the design. Pairing accepts eight total attempts per
+source IP in a one-minute window.
 Successful pairing clears that address's attempt window. Portway keeps at most
 32 authenticated browser sessions in memory, while `max_clients` separately
 limits simultaneous controllers. Portway logs authentication outcomes but not
@@ -55,22 +58,21 @@ submitted credentials, session values, typed text, or individual input events.
 
 ## Normal authenticated login flow
 
-1. The operator starts Portway with token authentication. Portway loads or
-   creates the persistent setup token and issues a signed, short-lived pairing
-   code for its startup URLs. `portway pair` can issue another code later from
-   the same protected token without contacting or restarting the server.
-2. The controller opens a pairing URL. Static controller assets are public, so
-   the page can load before authentication. JavaScript reads the `pair` query
-   value and removes it from the visible address before submitting it.
-3. The page sends the temporary code to `POST /api/pair`. The recovery setup
+1. The operator starts Portway with token authentication, then runs
+   `portway pair` as the service user. The command loads the persistent setup
+   token, replaces any outstanding pairing record, and prints a protected
+   six-digit code without contacting or restarting the server.
+2. The controller opens the Portway website. Static controller assets are public,
+   so the pairing dialog can load before authentication. The user enters the
+   six-digit code shown by Portway.
+3. The page sends the code to `POST /api/pair`. The recovery setup
    token can be submitted through the same form. The request must have an
    accepted `Origin`, fit the body/credential bounds, and pass the per-IP
    pairing limiter.
-4. The server verifies the credential. A pairing code must have a valid HMAC and
-   expiry and must not already be in the running process's replay cache. On
-   success, the server creates a random, fixed-lifetime in-memory session and
-   returns a `portway_session` cookie with `HttpOnly`, `SameSite=Strict`, and
-   `Max-Age`; HTTPS also adds `Secure`.
+4. The server verifies the code against the expiry and HMAC in the protected
+   pairing record, then deletes that record. On success, it creates a random,
+   fixed-lifetime in-memory session and returns a `portway_session` cookie with
+   `HttpOnly`, `SameSite=Strict`, and `Max-Age`; HTTPS also adds `Secure`.
 5. The page opens `/ws`. The browser attaches the cookie automatically; the
    WebSocket URL contains no credential. Portway checks the origin, session, and
    simultaneous-controller limit before upgrading, then sends `ready`.

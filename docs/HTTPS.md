@@ -60,7 +60,7 @@ Native HTTPS is the smallest deployment. A reverse proxy is also viable when it:
 
 - forwards WebSocket upgrades without changing the request `Host`;
 - terminates TLS with a certificate trusted by the controller;
-- does not log query strings from temporary pairing URLs;
+- does not log cookies or pairing request bodies;
 - does not cache Portway responses;
 - restricts access to intended LAN or VPN interfaces; and
 - configures its public HTTPS origin in `allowed_origins` only when `Host` cannot

@@ -319,7 +319,7 @@ printf '\nPortway installation complete.\n'
 printf 'Service: systemctl status portway.service\n'
 printf 'Logs:    journalctl -u portway.service -f\n'
 if [ "$START" = yes ] && [ "$INSTALLED_AUTH" = token ]; then
-  printf '\n'
+  printf '\nEnter this temporary six-digit code in the Portway website:\n'
   runuser -u portway -- /usr/local/bin/portway --config /etc/portway/config.toml pair
 elif [ "$START" = yes ]; then
   printf '\nWarning: authentication is disabled; every network peer that can connect has control.\n'

@@ -60,25 +60,19 @@ flag is listed in [CLI.md](CLI.md).
 
 ## Pair another controller
 
-The installer prints temporary URLs after startup. Generate another at any time
-without restarting Portway:
+The installer prints a temporary six-digit code after startup. Generate another
+at any time without restarting Portway:
 
 ```sh
 sudo -u portway portway --config /etc/portway/config.toml pair
 ```
 
-Override address detection when necessary:
-
-```sh
-sudo -u portway portway --config /etc/portway/config.toml pair \
-  --host portway-host.local
-```
-
-The code is signed by the persistent setup secret, expires after five minutes by
-default, and is accepted once by the running server. The command fails rather
-than creating a new secret if the configured token file is missing. The setup
-secret itself is not printed. `portway token` remains an explicit recovery
-operation.
+The command prints only the code. Open the configured Portway website on the
+controller and enter it in the pairing dialog. The code expires after five
+minutes by default and is accepted once by the running server. Generating a new
+code invalidates the previous one. The command fails rather than creating a new
+setup secret if the configured token file is missing. `portway token` remains an
+explicit recovery operation.
 
 ## Upgrade and reconfigure
 

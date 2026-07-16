@@ -29,15 +29,8 @@ pub enum Command {
     Serve(Box<ServeOptions>),
     /// Print the persistent setup token to the terminal.
     Token,
-    /// Print temporary pairing URLs for a running server.
-    Pair(PairOptions),
-}
-
-#[derive(Debug, Default, Args)]
-pub struct PairOptions {
-    /// Hostname or IP to use instead of automatic address detection.
-    #[arg(long)]
-    pub host: Option<String>,
+    /// Print a six-digit pairing code for a running server.
+    Pair,
 }
 
 #[derive(Debug, Default, Args)]

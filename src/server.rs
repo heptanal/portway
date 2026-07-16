@@ -307,7 +307,7 @@ async fn pair(
             .into_response();
     }
     let credential = request.code.trim();
-    if !(8..=128).contains(&credential.len()) {
+    if !(6..=128).contains(&credential.len()) {
         warn!(%remote, "controller pairing failed");
         return (StatusCode::UNAUTHORIZED, "pairing failed").into_response();
     }
@@ -612,6 +612,7 @@ mod tests {
 
     use axum::{body::Body, http::Request};
     use futures_util::{SinkExt, StreamExt};
+    use tempfile::tempdir;
     use tokio::sync::oneshot;
     use tokio_tungstenite::{connect_async, tungstenite::client::IntoClientRequest};
     use tower::ServiceExt;
@@ -691,9 +692,13 @@ mod tests {
 
     #[tokio::test]
     async fn pairing_code_sets_hardened_cookie_and_cannot_be_replayed() {
+        let dir = tempdir().unwrap();
         let (recording, _) = RecordingBackend::new();
         let backend: SharedBackend = Arc::new(tokio::sync::Mutex::new(Box::new(recording)));
-        let auth = Authenticator::from_token(b"integration-token".to_vec());
+        let auth = Authenticator::from_token(
+            b"integration-token".to_vec(),
+            dir.path().join("token.pairing"),
+        );
         let code = auth.issue_pairing_code().unwrap().unwrap();
         let app = router(AppState::new(&test_config(), backend, auth));
 
@@ -716,12 +721,16 @@ mod tests {
 
     #[tokio::test]
     async fn pairing_attempts_are_rate_limited_per_address() {
+        let dir = tempdir().unwrap();
         let (recording, _) = RecordingBackend::new();
         let backend: SharedBackend = Arc::new(tokio::sync::Mutex::new(Box::new(recording)));
         let state = AppState::new(
             &test_config(),
             backend,
-            Authenticator::from_token(b"integration-token".to_vec()),
+            Authenticator::from_token(
+                b"integration-token".to_vec(),
+                dir.path().join("token.pairing"),
+            ),
         );
         let remote = IpAddr::from([192, 0, 2, 10]);
 
@@ -735,9 +744,13 @@ mod tests {
 
     #[tokio::test]
     async fn websocket_authenticates_records_and_cleans_up() {
+        let dir = tempdir().unwrap();
         let (recording, handle) = RecordingBackend::new();
         let backend: SharedBackend = Arc::new(tokio::sync::Mutex::new(Box::new(recording)));
-        let auth = Authenticator::from_token(b"integration-token".to_vec());
+        let auth = Authenticator::from_token(
+            b"integration-token".to_vec(),
+            dir.path().join("token.pairing"),
+        );
         let session = auth.exchange("integration-token").await.unwrap().unwrap();
         let state = AppState::new(&test_config(), backend, auth);
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

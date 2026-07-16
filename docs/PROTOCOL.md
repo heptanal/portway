@@ -3,22 +3,24 @@
 The control channel is a WebSocket at `/ws`. Authentication uses the
 `portway_session` cookie; origin and session validation happen before HTTP
 upgrade. Persistent setup tokens and temporary pairing codes are never accepted
-in the WebSocket URL. Text frames only are accepted, with a maximum decoded size
-of 4096 bytes.
+in HTTP or WebSocket URLs. Text frames only are accepted, with a maximum decoded
+size of 4096 bytes.
 
 The browser obtains a session through `POST /api/pair` with a strict JSON body:
 
 ```json
-{"code":"temporary-code-or-setup-token"}
+{"code":"123456"}
 ```
 
 The request body is limited to 512 bytes and must have a same-host or explicitly
 allowed `Origin`. At most eight total attempts per source IP are accepted in a
 one-minute window; a successful exchange clears that address's window.
-A valid temporary code is HMAC-signed by the setup secret, time-bounded, and
-consumed once. Success sets an expiring `HttpOnly`, `SameSite=Strict` cookie;
-HTTPS additionally sets `Secure`. `GET /api/session` reports browser session
-state, and `POST /api/session/logout` revokes it.
+A valid temporary code is six decimal digits. The server checks it against a
+protected, time-bounded HMAC record and deletes that record on success. The
+persistent setup token is accepted by the same field for recovery. Success sets
+an expiring `HttpOnly`, `SameSite=Strict` cookie; HTTPS additionally sets
+`Secure`. `GET /api/session` reports browser session state, and
+`POST /api/session/logout` revokes it.
 
 Every client message is a strict JSON envelope:
 

@@ -15,7 +15,7 @@ allowed to contain unsafe code and is compiled only on Linux.
 ## Layers
 
 1. `config` resolves defaults, a TOML file, environment variables, and CLI flags.
-2. `auth` owns the `0600` setup token, signed one-use pairing codes, and sessions.
+2. `auth` owns the `0600` setup token and pairing record, one-use codes, and sessions.
 3. `protocol` defines the versioned WebSocket schema and validation bounds.
 4. `input` defines `InputBackend`, US key mapping, recording and unavailable backends.
 5. `input::linux` owns `/dev/uinput` file descriptors and ioctl/event details.
@@ -64,12 +64,15 @@ or compositor-specific text protocol.
 
 ## Security boundaries
 
-Static assets are public. HMAC-signed pairing codes carry an expiry and nonce, so
-the local CLI can create them from the protected setup secret without an IPC
-service or server restart. The server retains a bounded replay set until expiry.
-Pairing exchanges a code or the constant-time-checked recovery token for a random
-server-side session. The browser receives only an `HttpOnly`, `SameSite=Strict`
-cookie; WebSocket upgrades require that session and never accept URL credentials.
+Static assets are public. The local CLI creates a random six-digit code and
+atomically installs a `0600` pairing record beside the setup token. That record
+contains an expiry and HMAC rather than the plaintext code, so the server can
+validate and consume it without IPC or a restart. Replacing the record invalidates
+an older code; deleting it before session creation prevents replay across process
+restarts. Pairing exchanges a code or the constant-time-checked recovery token for
+a random server-side session. The browser receives only an `HttpOnly`,
+`SameSite=Strict` cookie; WebSocket upgrades require that session and never accept
+URL credentials.
 Pairing, logout, and WebSocket requests must have an HTTP(S) `Origin` whose
 authority matches `Host`, unless the origin is explicitly allow-listed.
 

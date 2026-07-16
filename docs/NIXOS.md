@@ -57,7 +57,8 @@ The module:
 - enables a hardened, automatically restarting system service; and
 - optionally opens only the selected firewall interfaces.
 
-Generate a temporary pairing URL after the service starts:
+Generate a temporary six-digit pairing code after the service starts, then enter
+it in the Portway website:
 
 ```sh
 sudo -u portway portway --config /etc/portway/config.toml pair

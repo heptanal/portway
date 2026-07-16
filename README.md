@@ -35,8 +35,8 @@ scripts/install-linux
 Choose authenticated LAN HTTP, localhost-only, or certificate-backed HTTPS. The
 installer creates an unprivileged boot service, configures `/dev/uinput`, loads
 the kernel module at every boot, handles active `ufw`/`firewalld` when requested,
-starts Portway, and prints a temporary pairing URL. Details and unattended flags
-are in [docs/INSTALL.md](docs/INSTALL.md).
+starts Portway, and prints a temporary six-digit pairing code. Details and
+unattended flags are in [docs/INSTALL.md](docs/INSTALL.md).
 
 NixOS must remain declarative. Add the local checkout as a flake input so the
 package uses the same pinned Rust 1.97.0 toolchain as development:
@@ -61,40 +61,39 @@ package uses the same pinned Rust 1.97.0 toolchain as development:
 }
 ```
 
-After installation, generate another five-minute, single-use pairing URL without
+After installation, generate another five-minute, single-use pairing code without
 restarting the service:
 
 ```sh
 sudo -u portway portway --config /etc/portway/config.toml pair
 ```
 
-Open a reported URL from the host or phone, for example:
+Open the Portway website from the host or phone, for example:
 
 ```text
-http://localhost:2721/?pair=<temporary-code>
+http://localhost:2721/
 ```
 
 From a phone on the same LAN open the reported address, for example:
 
 ```text
-http://192.168.1.42:2721/?pair=<temporary-code>
+http://192.168.1.42:2721/
 ```
 
-The browser removes the code from its address bar, exchanges it for an `HttpOnly`
-session cookie, and does not persist the submitted credential in browser storage.
-The persistent setup token is also accepted in the pairing form for recovery.
-Neither credential is sent in a WebSocket URL. To create or deliberately display
-the setup token as the same user running the service:
+Enter the six-digit code in the pairing dialog. The browser exchanges it for an
+`HttpOnly` session cookie and does not persist the submitted credential. The
+persistent setup token is also accepted in the pairing form for recovery.
+Credentials are never placed in HTTP or WebSocket URLs. To create or deliberately
+display the setup token as the same user running the service:
 
 ```sh
 sudo -u portway portway --config /etc/portway/config.toml token
 ```
 
 Sessions expire after 12 hours by default and are invalidated by logout or server
-restart. Pairing-code replay tracking is memory-only: restarting the server within
-a code's five-minute validity window can make that code usable once by the new
-process. Native HTTPS configuration is described in
-[docs/HTTPS.md](docs/HTTPS.md).
+restart. Issuing a new pairing code invalidates the previous code, and successful
+exchange deletes its protected on-disk record so it cannot be replayed after a
+restart. Native HTTPS configuration is described in [docs/HTTPS.md](docs/HTTPS.md).
 
 Find LAN addresses manually with `ip -brief address` or `hostname -I`. Firewalls
 must permit inbound TCP port 2721 on the intended trusted interface.

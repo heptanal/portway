@@ -37,9 +37,6 @@ let dragLocked = false;
 const activeModifiers = new Set();
 const modifierPresses = new Map();
 
-const queryPairingCode = new URLSearchParams(location.search).get("pair");
-if (queryPairingCode) history.replaceState(null, "", `${location.pathname}${location.hash}`);
-
 ui.sensitivity.value = String(sensitivity);
 ui.sensitivityValue.value = `${sensitivity.toFixed(1)}×`;
 
@@ -135,17 +132,6 @@ async function exchangeCredential(code) {
 }
 
 async function initialize() {
-  if (queryPairingCode) {
-    try {
-      setStatus("Pairing");
-      await exchangeCredential(queryPairingCode);
-      connect();
-      return;
-    } catch (error) {
-      showToast(error.message);
-    }
-  }
-
   try {
     const response = await fetch("/api/session", {
       credentials: "same-origin",

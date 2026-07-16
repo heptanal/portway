@@ -4,7 +4,6 @@
 
 - Test device recognition and all key codes on representative Wayland and X11 hosts.
 - Add automatic TLS certificate reload and a documented local-CA provisioning workflow.
-- Persist pairing-code replay state or add local IPC for strict one-use semantics across server restarts.
 - Test the guided installer/uninstaller across Debian, Fedora, Arch, and openSUSE.
 - Produce signed release archives containing the binary, installer, service files, and checksums.
 - Add configurable keyboard layout modules beyond US ANSI.

@@ -106,9 +106,9 @@
       <form id="auth-form" method="dialog">
         <div class="auth-mark" aria-hidden="true"></div>
         <h1>Connect to Portway</h1>
-        <p>Open the temporary startup link or enter its pairing code. The setup token is accepted for recovery.</p>
-        <label for="pair-input">Pairing code</label>
-        <input id="pair-input" name="code" type="password" required autocomplete="one-time-code" inputmode="text">
+        <p>Enter the six-digit code shown by <code>portway pair</code>. The setup token is also accepted for recovery.</p>
+        <label for="pair-input">Pairing code or setup token</label>
+        <input id="pair-input" name="code" type="password" required maxlength="128" autocomplete="one-time-code" inputmode="numeric">
         <button id="pair-submit" type="submit">Pair this device</button>
         <small>HTTPS protects pairing and controller input in transit.</small>
       </form>

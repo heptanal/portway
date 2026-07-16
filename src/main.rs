@@ -8,7 +8,7 @@ use axum_server::tls_rustls::RustlsConfig;
 use clap::Parser;
 use portway::{
     auth,
-    config::{AuthMode, Cli, Command, Config, PairOptions, ServeOptions},
+    config::{AuthMode, Cli, Command, Config, ServeOptions},
     input::{SharedBackend, create_backend},
     server::{AppState, serve, serve_tls},
 };
@@ -29,41 +29,22 @@ fn main() -> Result<()> {
                 .block_on(run(config))
         }
         Command::Token => print_token(cli.config),
-        Command::Pair(options) => print_pairing_urls(cli.config, &options),
+        Command::Pair => print_pairing_code(cli.config),
     }
 }
 
-fn print_pairing_urls(
-    config_path: Option<std::path::PathBuf>,
-    options: &PairOptions,
-) -> Result<()> {
+fn print_pairing_code(config_path: Option<std::path::PathBuf>) -> Result<()> {
     let config = Config::load(config_path, &ServeOptions::default())?;
     if config.auth_mode == AuthMode::Disabled {
         bail!("authentication is disabled; a pairing code is not required");
     }
     let setup_token = auth::read_existing_token(&config.token_file)?;
-    let code = auth::create_pairing_code(&setup_token, config.pairing_code_ttl_seconds)?;
-    let scheme = if config.tls_enabled() {
-        "https"
-    } else {
-        "http"
-    };
-
-    println!(
-        "Temporary pairing URL(s), valid for {} seconds and accepted once:",
-        config.pairing_code_ttl_seconds
+    let code = auth::create_pairing_code(
+        &setup_token,
+        &auth::pairing_code_path(&config.token_file),
+        config.pairing_code_ttl_seconds,
     );
-    if let Some(host) = options.host.as_deref() {
-        println!("{}?pair={code}", url_for_host(scheme, host, config.port)?);
-        return Ok(());
-    }
-    println!(
-        "{}?pair={code}",
-        local_url(scheme, config.listen, config.port)
-    );
-    if let Some(lan_ip) = advertised_lan_ip(config.listen) {
-        println!("{}?pair={code}", url_for_ip(scheme, lan_ip, config.port));
-    }
+    println!("{}", code?);
     Ok(())
 }
 
@@ -79,7 +60,6 @@ fn print_token(config_path: Option<std::path::PathBuf>) -> Result<()> {
 
 async fn run(config: Config) -> Result<()> {
     let auth = auth::load_or_create(&config)?;
-    let pairing_code = auth.authenticator.issue_pairing_code()?;
     let backend = create_backend(&config)?;
     let status = backend.status();
     let backend: SharedBackend = Arc::new(tokio::sync::Mutex::new(backend));
@@ -122,17 +102,11 @@ async fn run(config: Config) -> Result<()> {
     info!(url = %local_url(scheme, config.listen, bound.port()), "local control URL");
     if let Some(lan_ip) = advertised_lan_ip(config.listen) {
         info!(url = %url_for_ip(scheme, lan_ip, bound.port()), "LAN control URL");
-        if let Some(code) = pairing_code.as_deref() {
-            info!(
-                url = %format!("{}/?pair={code}", url_for_ip(scheme, lan_ip, bound.port())),
-                expires_in_seconds = auth.authenticator.pairing_code_ttl_seconds(),
-                "temporary single-use pairing URL"
-            );
-        }
     }
     info!(
         authentication = if config.auth_mode == AuthMode::Token { "token" } else { "disabled" },
         token_file = %auth.token_path.display(),
+        pairing_code_file = %auth.pairing_code_path.display(),
         "authentication status"
     );
     if auth.newly_created {
@@ -140,12 +114,6 @@ async fn run(config: Config) -> Result<()> {
     }
     if config.auth_mode == AuthMode::Disabled {
         warn!("AUTHENTICATION IS DISABLED; any network peer can control this machine");
-    } else if let Some(code) = pairing_code.as_deref() {
-        info!(
-            url = %format!("{}/?pair={code}", local_url(scheme, config.listen, bound.port())),
-            expires_in_seconds = auth.authenticator.pairing_code_ttl_seconds(),
-            "temporary single-use local pairing URL"
-        );
     }
     if tls_config.is_some() {
         info!("native HTTPS enabled; session cookies require secure transport");
@@ -205,29 +173,6 @@ fn url_for_ip(scheme: &str, ip: IpAddr, port: u16) -> String {
     format!("{scheme}://{}", SocketAddr::new(ip, port))
 }
 
-fn url_for_host(scheme: &str, host: &str, port: u16) -> Result<String> {
-    if let Ok(ip) = host.parse::<IpAddr>() {
-        return Ok(url_for_ip(scheme, ip, port));
-    }
-    if host.is_empty()
-        || host.len() > 253
-        || host.starts_with('.')
-        || host.ends_with('.')
-        || host.split('.').any(|label| {
-            label.is_empty()
-                || label.len() > 63
-                || label.starts_with('-')
-                || label.ends_with('-')
-                || !label
-                    .bytes()
-                    .all(|byte| byte.is_ascii_alphanumeric() || byte == b'-')
-        })
-    {
-        bail!("pairing host must be a valid hostname or IP address");
-    }
-    Ok(format!("{scheme}://{host}:{port}/"))
-}
-
 fn detect_lan_ip() -> Option<IpAddr> {
     let socket = UdpSocket::bind("0.0.0.0:0").ok()?;
     socket.connect("192.0.2.1:80").ok()?;
@@ -270,18 +215,5 @@ mod tests {
             url_for_ip("https", "2001:db8::1".parse().unwrap(), 2721),
             "https://[2001:db8::1]:2721"
         );
-    }
-
-    #[test]
-    fn validates_pairing_url_hosts() {
-        assert_eq!(
-            url_for_host("https", "portway.local", 2721).unwrap(),
-            "https://portway.local:2721/"
-        );
-        assert_eq!(
-            url_for_host("http", "2001:db8::1", 2721).unwrap(),
-            "http://[2001:db8::1]:2721"
-        );
-        assert!(url_for_host("http", "bad/host", 2721).is_err());
     }
 }

@@ -17,18 +17,19 @@ other devices.
 
 ## Authentication repeatedly fails
 
-Generate a fresh temporary URL without restarting the service:
+Generate a fresh temporary code without restarting the service:
 
 ```sh
 sudo -u portway portway --config /etc/portway/config.toml pair
 ```
 
-It expires after five minutes by default and can be used only once by the running
-server. For recovery, run `portway token` as the same user and with the same
-`--config` path as the server, then enter that setup token in the pairing dialog.
-Tokens under root's home differ from the service user's token. Tap connection
-status to revoke the current browser session and pair again. Server logs record
-attempt outcomes but not credential values.
+Enter the six digits in the website's pairing dialog. The code expires after five
+minutes by default and can be used only once; generating another code invalidates
+it. For recovery, run `portway token` as the same user and with the same `--config`
+path as the server, then enter that setup token in the pairing dialog. Tokens
+under root's home differ from the service user's token. Tap connection status to
+revoke the current browser session and pair again. Server logs record attempt
+outcomes but not submitted credential values.
 
 ## HTTPS certificate errors
 

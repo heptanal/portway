@@ -83,23 +83,23 @@ Options are the global `--config PATH` and `-h`/`--help` only.
 
 ## `pair`
 
-`portway pair` reads an existing setup token and prints a newly signed,
-short-lived pairing URL. It does not contact or restart the server and refuses
-to create a missing token. The running server must use the same token and
-configuration to accept the code.
+`portway pair` reads an existing setup token, creates a protected pairing record,
+and prints only a random six-digit code. It does not contact or restart the
+server and refuses to create a missing token. The running server must use the
+same token path and configuration to accept the code.
 
 ```sh
 portway --config /etc/portway/config.toml pair
-portway --config /etc/portway/config.toml pair --host portway-host.local
 ```
 
-Without `--host`, Portway prints a local URL and, when detectable, a LAN URL.
-`--host HOST` prints one URL using that hostname or IP. Hostnames must contain
-valid DNS-style labels; IPv4 and IPv6 literals are accepted. The command uses
-the configured port, TLS mode, and pairing-code lifetime. It fails when
-authentication is disabled because no pairing is needed.
+Enter the code in the pairing dialog at the Portway website. It uses the
+configured pairing-code lifetime, five minutes by default, and can be exchanged
+once. Issuing a new code invalidates the previous one. The protected record is
+stored at the token path with `.pairing` appended and contains an expiry and HMAC,
+not the six-digit plaintext. The command fails when authentication is disabled
+because no pairing is needed.
 
-Options are `--host HOST`, global `--config PATH`, and `-h`/`--help`.
+Options are global `--config PATH` and `-h`/`--help` only.
 
 ## Repository operations scripts
 

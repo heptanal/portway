@@ -11,9 +11,10 @@ token_file = "/var/lib/portway/token"
 # tls_cert = "/var/lib/portway/tls/cert.pem"
 # tls_key = "/var/lib/portway/tls/key.pem"
 
-# Signed pairing codes are short-lived and single-use. Controller sessions are
-# memory-only and invalidated by logout, expiry, token rotation plus restart, or
-# server restart.
+# Six-digit pairing codes are short-lived and single-use. Their protected HMAC
+# record is stored beside the token with `.pairing` appended. Controller sessions
+# are memory-only and invalidated by logout, expiry, token rotation plus restart,
+# or server restart.
 pairing_code_ttl_seconds = 300
 session_ttl_seconds = 43200
 
