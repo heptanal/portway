@@ -38,6 +38,10 @@ flags:
 scripts/install-linux --profile lan --auth disabled --accept-risk
 ```
 
+The user who invokes the installer through `sudo` is authorized to run
+`portway pair` without privilege elevation. A root-run or unattended installer
+can select that account explicitly with `--pair-user USER`.
+
 Useful unattended examples:
 
 ```sh
@@ -64,15 +68,17 @@ The installer prints a temporary six-digit code after startup. Generate another
 at any time without restarting Portway:
 
 ```sh
-sudo -u portway portway --config /etc/portway/config.toml pair
+portway pair
 ```
 
-The command prints only the code. Open the configured Portway website on the
-controller and enter it in the pairing dialog. The code expires after five
-minutes by default and is accepted once by the running server. Generating a new
-code invalidates the previous one. The command fails rather than creating a new
-setup secret if the configured token file is missing. `portway token` remains an
-explicit recovery operation.
+The command automatically discovers `/etc/portway/config.toml` and asks the
+running service for a code through `/run/portway/pair.sock`. The service verifies
+the caller's kernel-reported user ID before printing the code; the caller never
+gains access to the setup token or protected pairing record. Root, the service
+account, and UIDs listed in `pairing_allowed_uids` are accepted. Open the Portway
+website and enter the code in the pairing dialog. It expires after five minutes
+by default and is accepted once; generating another invalidates the previous
+one. `portway token` remains an explicit privileged recovery operation.
 
 ## Upgrade and reconfigure
 
@@ -86,7 +92,10 @@ scripts/install-linux --yes
 ```
 
 Use `--force-config` only when intentionally replacing the configuration. The
-previous file is saved as `/etc/portway/config.toml.bak`.
+previous file is saved as `/etc/portway/config.toml.bak`. Upgrading an older
+installation adds the pairing-socket settings when absent and makes the
+non-secret system configuration readable for command discovery; credentials
+under `/var/lib/portway` remain owner-only.
 
 Inspect operation with:
 

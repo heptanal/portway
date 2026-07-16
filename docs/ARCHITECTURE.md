@@ -16,14 +16,15 @@ allowed to contain unsafe code and is compiled only on Linux.
 
 1. `config` resolves defaults, a TOML file, environment variables, and CLI flags.
 2. `auth` owns the `0600` setup token and pairing record, one-use codes, and sessions.
-3. `protocol` defines the versioned WebSocket schema and validation bounds.
-4. `input` defines `InputBackend`, US key mapping, recording and unavailable backends.
-5. `input::linux` owns `/dev/uinput` file descriptors and ioctl/event details.
-6. `session` applies validated commands, tracks held state, rate-limits clients,
+3. `local_pairing` authorizes Unix-socket callers by peer UID and returns temporary codes.
+4. `protocol` defines the versioned WebSocket schema and validation bounds.
+5. `input` defines `InputBackend`, US key mapping, recording and unavailable backends.
+6. `input::linux` owns `/dev/uinput` file descriptors and ioctl/event details.
+7. `session` applies validated commands, tracks held state, rate-limits clients,
    and guarantees session-scoped cleanup.
-7. `server` performs HTTP(S)/WebSocket lifecycle, pairing/session/origin checks,
+8. `server` performs HTTP(S)/WebSocket lifecycle, pairing/session/origin checks,
    controller admission, heartbeat expiry, security headers, and asset serving.
-8. `web` is the phone-first controller and contains no trusted policy decisions.
+9. `web` is the phone-first controller and contains no trusted policy decisions.
 
 The HTTP and WebSocket layers never call ioctl. `InputBackend` is the boundary:
 
@@ -37,8 +38,9 @@ The initial release is one unprivileged process. A udev rule grants `/dev/uinput
 to members of a dedicated `portway` group. This avoids exposing a root network
 service and is simpler to audit than a privileged helper. Membership in that
 group is security-sensitive: it effectively permits synthetic input across the
-machine. The interface permits a future Unix-socket helper without changing the
-protocol or server.
+machine. The same unprivileged process owns a local Unix pairing socket. It uses
+kernel peer credentials and a UID allowlist to issue codes without granting local
+users access to the token or uinput group.
 
 Running `sudo portway serve` works for initial testing but is not the recommended
 service configuration because both the listener and token file then run as root.
@@ -64,13 +66,13 @@ or compositor-specific text protocol.
 
 ## Security boundaries
 
-Static assets are public. The local CLI creates a random six-digit code and
-atomically installs a `0600` pairing record beside the setup token. That record
-contains an expiry and HMAC rather than the plaintext code, so the server can
-validate and consume it without IPC or a restart. Replacing the record invalidates
-an older code; deleting it before session creation prevents replay across process
-restarts. Pairing exchanges a code or the constant-time-checked recovery token for
-a random server-side session. The browser receives only an `HttpOnly`,
+Static assets are public. The CLI requests a code over a local Unix socket; the
+server authorizes the peer UID, creates a random six-digit code, and atomically
+installs a `0600` pairing record beside the setup token. That record contains an
+expiry and HMAC rather than the plaintext code. Replacing it invalidates an older
+code; deleting it before session creation prevents replay across process restarts.
+Pairing exchanges a code or the constant-time-checked recovery token for a random
+server-side session. The browser receives only an `HttpOnly`,
 `SameSite=Strict` cookie; WebSocket upgrades require that session and never accept
 URL credentials.
 Pairing, logout, and WebSocket requests must have an HTTP(S) `Origin` whose

@@ -53,6 +53,7 @@ package uses the same pinned Rust 1.97.0 toolchain as development:
           services.portway = {
             enable = true;
             firewallInterfaces = [ "wlp2s0" ];
+            pairingAllowedUids = [ 1000 ];
           };
         }
       ];
@@ -65,7 +66,7 @@ After installation, generate another five-minute, single-use pairing code withou
 restarting the service:
 
 ```sh
-sudo -u portway portway --config /etc/portway/config.toml pair
+portway pair
 ```
 
 Open the Portway website from the host or phone, for example:
@@ -87,7 +88,7 @@ Credentials are never placed in HTTP or WebSocket URLs. To create or deliberatel
 display the setup token as the same user running the service:
 
 ```sh
-sudo -u portway portway --config /etc/portway/config.toml token
+sudo -u portway portway token
 ```
 
 Sessions expire after 12 hours by default and are invalidated by logout or server
@@ -123,8 +124,9 @@ For `serve`, precedence is predictable:
 CLI flags and PORTWAY_* environment variables > TOML file > defaults
 ```
 
-The default file is `$XDG_CONFIG_HOME/portway/config.toml`, normally
-`~/.config/portway/config.toml`. Pass another with `--config`. See
+When `/etc/portway/config.toml` exists it is the automatic default, including
+under `sudo`. Otherwise Portway uses `$XDG_CONFIG_HOME/portway/config.toml`,
+normally `~/.config/portway/config.toml`. Pass another with `--config`. See
 [config/portway.example.toml](config/portway.example.toml). The complete command,
 flag, environment-variable, and validation reference is in
 [docs/CLI.md](docs/CLI.md).

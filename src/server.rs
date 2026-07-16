@@ -632,6 +632,8 @@ mod tests {
             port: 2721,
             auth_mode: AuthMode::Token,
             token_file: PathBuf::from("token"),
+            pairing_socket: PathBuf::from("token.socket"),
+            pairing_allowed_uids: Vec::new(),
             tls_cert: None,
             tls_key: None,
             pairing_code_ttl_seconds: 300,
@@ -656,6 +658,13 @@ mod tests {
             .extension(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 40_000))))
             .body(Body::from(format!(r#"{{"code":"{code}"}}"#)))
             .unwrap()
+    }
+
+    #[test]
+    fn login_page_exposes_an_accessible_inline_pairing_error() {
+        assert!(INDEX_HTML.contains("id=\"pair-error\""));
+        assert!(INDEX_HTML.contains("role=\"alert\""));
+        assert!(APP_JS.contains("showPairError(error.message)"));
     }
 
     #[test]

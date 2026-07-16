@@ -13,6 +13,8 @@ TLS_KEY=
 YES=no
 START=yes
 FORCE_CONFIG=no
+PAIR_USER=
+PAIR_USER_SET=no
 
 usage() {
   cat <<'EOF'
@@ -29,6 +31,7 @@ Options:
   --auth token|disabled      Authentication mode (default: token)
   --accept-risk              Required with --auth disabled
   --firewall auto|skip       Open a detected active firewall or leave it alone
+  --pair-user USER           Local user allowed to run `portway pair`
   --force-config             Replace an existing /etc/portway/config.toml
   --no-start                 Install without enabling or starting the service
   --yes                      Accept defaults without prompts
@@ -62,6 +65,7 @@ while [ "$#" -gt 0 ]; do
     --auth) [ "$#" -ge 2 ] || { echo "--auth requires a value" >&2; exit 2; }; AUTH=$2; shift 2 ;;
     --accept-risk) ACCEPT_RISK=yes; shift ;;
     --firewall) [ "$#" -ge 2 ] || { echo "--firewall requires a value" >&2; exit 2; }; FIREWALL=$2; shift 2 ;;
+    --pair-user) [ "$#" -ge 2 ] || { echo "--pair-user requires a value" >&2; exit 2; }; PAIR_USER=$2; PAIR_USER_SET=yes; shift 2 ;;
     --force-config) FORCE_CONFIG=yes; shift ;;
     --no-start) START=no; shift ;;
     --yes) YES=yes; shift ;;
@@ -93,12 +97,14 @@ PREVIOUS_PORT=
 PREVIOUS_FIREWALL=none
 PREVIOUS_CREATED_USER=no
 PREVIOUS_CREATED_GROUP=no
+PREVIOUS_PAIR_USER=
 if [ -r "$STATE" ]; then
   PREVIOUS_PROFILE=$(sed -n 's/^profile=//p' "$STATE" | head -n 1)
   PREVIOUS_PORT=$(sed -n 's/^port=//p' "$STATE" | head -n 1)
   PREVIOUS_FIREWALL=$(sed -n 's/^firewall=//p' "$STATE" | head -n 1)
   PREVIOUS_CREATED_USER=$(sed -n 's/^created_user=//p' "$STATE" | head -n 1)
   PREVIOUS_CREATED_GROUP=$(sed -n 's/^created_group=//p' "$STATE" | head -n 1)
+  PREVIOUS_PAIR_USER=$(sed -n 's/^pair_user=//p' "$STATE" | head -n 1)
 fi
 case "$PREVIOUS_PROFILE" in lan|local|https) ;; *) PREVIOUS_PROFILE= ;; esac
 case "$PREVIOUS_PORT" in ''|*[!0-9]*) PREVIOUS_PORT= ;; esac
@@ -110,6 +116,15 @@ fi
 case "$PREVIOUS_FIREWALL" in none|ufw|firewalld) ;; *) PREVIOUS_FIREWALL=none ;; esac
 case "$PREVIOUS_CREATED_USER" in yes|no) ;; *) PREVIOUS_CREATED_USER=no ;; esac
 case "$PREVIOUS_CREATED_GROUP" in yes|no) ;; *) PREVIOUS_CREATED_GROUP=no ;; esac
+if [ "$PAIR_USER_SET" != yes ]; then
+  if [ -n "$PREVIOUS_PAIR_USER" ]; then
+    PAIR_USER=$PREVIOUS_PAIR_USER
+  elif [ -n "${SUDO_USER:-}" ] && [ "$SUDO_USER" != root ]; then
+    PAIR_USER=$SUDO_USER
+  else
+    PAIR_USER=root
+  fi
+fi
 
 WRITE_CONFIG=yes
 if [ -e /etc/portway/config.toml ] && [ "$FORCE_CONFIG" != yes ]; then
@@ -177,6 +192,11 @@ for command in install systemctl useradd usermod groupadd getent udevadm runuser
   }
 done
 systemctl --version >/dev/null 2>&1 || { echo "systemd is required" >&2; exit 1; }
+getent passwd "$PAIR_USER" >/dev/null 2>&1 || {
+  echo "pairing user does not exist: $PAIR_USER" >&2
+  exit 2
+}
+PAIR_UID=$(id -u "$PAIR_USER")
 "$BINARY" --version >/dev/null
 
 if [ "$YES" != yes ] && [ -t 0 ]; then
@@ -199,7 +219,7 @@ else
   usermod -a -G portway portway
 fi
 
-install -d -m0750 -o root -g portway /etc/portway
+install -d -m0755 -o root -g root /etc/portway
 install -d -m0700 -o portway -g portway /var/lib/portway
 install -Dm0755 "$BINARY" /usr/local/bin/portway
 install -Dm0644 "$ROOT/packaging/systemd/portway.service" /etc/systemd/system/portway.service
@@ -220,6 +240,8 @@ if [ "$WRITE_CONFIG" = yes ]; then
     printf 'port = %s\n' "$PORT"
     printf 'auth_mode = "%s"\n' "$AUTH"
     printf 'token_file = "/var/lib/portway/token"\n'
+    printf 'pairing_socket = "/run/portway/pair.sock"\n'
+    printf 'pairing_allowed_uids = [%s]\n' "$PAIR_UID"
     printf 'backend = "uinput"\n'
     printf 'max_clients = 1\n'
     printf 'pointer_sensitivity = 1.0\n'
@@ -234,15 +256,27 @@ if [ "$WRITE_CONFIG" = yes ]; then
       printf 'tls_key = "/var/lib/portway/tls/key.pem"\n'
     fi
   } > /etc/portway/config.toml
-  chown root:portway /etc/portway/config.toml
-  chmod 0640 /etc/portway/config.toml
   CONFIG_REPLACED=yes
 else
   echo "Preserving existing /etc/portway/config.toml (use --force-config to replace it)."
+  CONFIG_MIGRATED=no
+  if ! grep -Eq '^[[:space:]]*pairing_socket[[:space:]]*=' /etc/portway/config.toml; then
+    cp -p /etc/portway/config.toml /etc/portway/config.toml.bak
+    printf '\npairing_socket = "/run/portway/pair.sock"\n' >> /etc/portway/config.toml
+    CONFIG_MIGRATED=yes
+  fi
+  if ! grep -Eq '^[[:space:]]*pairing_allowed_uids[[:space:]]*=' /etc/portway/config.toml; then
+    if [ "$CONFIG_MIGRATED" != yes ]; then
+      cp -p /etc/portway/config.toml /etc/portway/config.toml.bak
+    fi
+    printf '\npairing_allowed_uids = [%s]\n' "$PAIR_UID" >> /etc/portway/config.toml
+  fi
   if [ "$PREVIOUS_FIREWALL" = none ]; then
     FIREWALL=skip
   fi
 fi
+chown root:root /etc/portway/config.toml
+chmod 0644 /etc/portway/config.toml
 
 if command -v modprobe >/dev/null 2>&1; then
   modprobe uinput
@@ -302,6 +336,7 @@ umask 0077
   printf 'firewall=%s\n' "$FIREWALL_ADDED"
   printf 'created_user=%s\n' "$CREATED_USER"
   printf 'created_group=%s\n' "$CREATED_GROUP"
+  printf 'pair_user=%s\n' "$PAIR_USER"
 } > "$STATE"
 chown root:root "$STATE"
 
@@ -320,7 +355,23 @@ printf 'Service: systemctl status portway.service\n'
 printf 'Logs:    journalctl -u portway.service -f\n'
 if [ "$START" = yes ] && [ "$INSTALLED_AUTH" = token ]; then
   printf '\nEnter this temporary six-digit code in the Portway website:\n'
-  runuser -u portway -- /usr/local/bin/portway --config /etc/portway/config.toml pair
+  PAIR_CODE=
+  PAIR_ERROR=
+  PAIR_ATTEMPT=0
+  while [ "$PAIR_ATTEMPT" -lt 50 ]; do
+    if PAIR_OUTPUT=$(runuser -u "$PAIR_USER" -- /usr/local/bin/portway pair 2>&1); then
+      PAIR_CODE=$PAIR_OUTPUT
+      break
+    fi
+    PAIR_ERROR=$PAIR_OUTPUT
+    PAIR_ATTEMPT=$((PAIR_ATTEMPT + 1))
+    sleep 0.1
+  done
+  if [ -z "$PAIR_CODE" ]; then
+    echo "failed to request an initial pairing code as $PAIR_USER: $PAIR_ERROR" >&2
+    exit 1
+  fi
+  printf '%s\n' "$PAIR_CODE"
 elif [ "$START" = yes ]; then
   printf '\nWarning: authentication is disabled; every network peer that can connect has control.\n'
 elif [ "$START" = no ]; then

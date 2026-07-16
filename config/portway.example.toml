@@ -6,6 +6,13 @@ port = 2721
 auth_mode = "token"
 token_file = "/var/lib/portway/token"
 
+# `portway pair` asks the running service for a code over this local Unix socket.
+# The socket owner and root are always accepted. Add trusted local numeric UIDs
+# that may request codes without sudo; the conventional installer does this for
+# its invoking user.
+pairing_socket = "/run/portway/pair.sock"
+pairing_allowed_uids = [1000]
+
 # Configure both paths to enable native HTTPS. The certificate must be trusted by
 # controller devices and cover the hostname or IP used in the browser.
 # tls_cert = "/var/lib/portway/tls/cert.pem"

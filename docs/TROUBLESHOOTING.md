@@ -20,16 +20,36 @@ other devices.
 Generate a fresh temporary code without restarting the service:
 
 ```sh
-sudo -u portway portway --config /etc/portway/config.toml pair
+portway pair
 ```
 
 Enter the six digits in the website's pairing dialog. The code expires after five
 minutes by default and can be used only once; generating another code invalidates
-it. For recovery, run `portway token` as the same user and with the same `--config`
-path as the server, then enter that setup token in the pairing dialog. Tokens
-under root's home differ from the service user's token. Tap connection status to
-revoke the current browser session and pair again. Server logs record attempt
-outcomes but not submitted credential values.
+it. An invalid or expired code is shown as an inline error below the pairing
+field. Installed systems automatically use `/etc/portway/config.toml`.
+
+If `portway pair` reports that the socket is unavailable, verify the service and
+socket:
+
+```sh
+systemctl status portway.service
+ls -l /run/portway/pair.sock
+```
+
+If it reports that the local user is not allowed, add that account's numeric UID
+to `pairing_allowed_uids` and restart Portway, or rerun the installer with the
+appropriate pairing user when replacing/migrating configuration. `sudo portway
+pair` remains available because root is always authorized.
+
+For recovery, run `portway token` as the service user, then enter that setup token
+in the pairing dialog:
+
+```sh
+sudo -u portway portway token
+```
+
+Tap connection status to revoke the current browser session and pair again.
+Server logs record attempt outcomes but not submitted credential values.
 
 ## HTTPS certificate errors
 

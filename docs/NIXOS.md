@@ -21,6 +21,7 @@ host flake inputs and module list:
         {
           services.portway = {
             enable = true;
+            pairingAllowedUids = [ 1000 ];
 
             # Prefer a trusted LAN interface instead of every interface.
             firewallInterfaces = [ "wlp2s0" ];
@@ -54,6 +55,7 @@ The module:
 - installs the `0660` udev rule;
 - writes a generated non-secret configuration at `/etc/portway/config.toml`;
 - stores the setup token under `/var/lib/portway`;
+- exposes a UID-authorized local pairing socket under `/run/portway`;
 - enables a hardened, automatically restarting system service; and
 - optionally opens only the selected firewall interfaces.
 
@@ -61,8 +63,13 @@ Generate a temporary six-digit pairing code after the service starts, then enter
 it in the Portway website:
 
 ```sh
-sudo -u portway portway --config /etc/portway/config.toml pair
+portway pair
 ```
+
+Set `services.portway.pairingAllowedUids` to the numeric UIDs of trusted local
+operators. Root and the `portway` service UID are accepted automatically. The
+command discovers `/etc/portway/config.toml`; no `--config` or `sudo` is needed
+for an allow-listed user.
 
 ## Exposure choices
 

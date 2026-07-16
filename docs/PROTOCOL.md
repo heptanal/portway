@@ -22,6 +22,18 @@ an expiring `HttpOnly`, `SameSite=Strict` cookie; HTTPS additionally sets
 `Secure`. `GET /api/session` reports browser session state, and
 `POST /api/session/logout` revokes it.
 
+## Local pairing-code service
+
+`portway pair` does not use the HTTP API and does not read the setup token. It
+connects to the configured Unix stream socket, `/run/portway/pair.sock` in the
+packaged service. The server obtains the peer UID from the kernel and accepts
+root, its own UID, or a UID in `pairing_allowed_uids`. An accepted connection
+receives one ASCII line containing the six-digit code; a rejected or failed
+request receives an `error: ...` line. This local protocol never transports the
+persistent token.
+
+## Controller messages
+
 Every client message is a strict JSON envelope:
 
 ```json

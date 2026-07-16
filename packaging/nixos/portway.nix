@@ -13,6 +13,8 @@ let
     port = cfg.port;
     auth_mode = cfg.authMode;
     token_file = "/var/lib/portway/token";
+    pairing_socket = "/run/portway/pair.sock";
+    pairing_allowed_uids = cfg.pairingAllowedUids;
     backend = "uinput";
     max_clients = cfg.maxClients;
     pointer_sensitivity = cfg.pointerSensitivity;
@@ -59,6 +61,13 @@ in
       description = "Controller authentication mode.";
     };
 
+    pairingAllowedUids = lib.mkOption {
+      type = lib.types.listOf lib.types.ints.u32;
+      default = [ ];
+      example = [ 1000 ];
+      description = "Local user IDs allowed to run portway pair without privilege elevation.";
+    };
+
     openFirewall = lib.mkOption {
       type = lib.types.bool;
       default = false;
@@ -101,7 +110,7 @@ in
     pairingCodeTtlSeconds = lib.mkOption {
       type = lib.types.ints.between 30 3600;
       default = 300;
-      description = "Lifetime of a temporary pairing URL.";
+      description = "Lifetime of a temporary pairing code.";
     };
 
     sessionTtlSeconds = lib.mkOption {
@@ -171,6 +180,8 @@ in
         RestartSec = 2;
         StateDirectory = "portway";
         StateDirectoryMode = "0700";
+        RuntimeDirectory = "portway";
+        RuntimeDirectoryMode = "0755";
         UMask = "0077";
         TimeoutStopSec = 10;
         NoNewPrivileges = true;

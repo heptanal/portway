@@ -8,6 +8,7 @@ sessions, TLS private key, and uinput group membership like credentials.
 - Authentication is enabled and a 256-bit setup token is generated on first use.
 - The setup-token file is created with owner-only permissions (`0600` on Unix).
 - `portway pair` prints a random six-digit, single-use code that expires in five minutes.
+- Local code requests are authorized from kernel-reported Unix peer user IDs.
 - Browsers receive a random `HttpOnly`, `SameSite=Strict` session cookie.
 - The server listens on `0.0.0.0:2721` for LAN usability.
 - One controller is permitted at a time.
@@ -28,12 +29,20 @@ That mode is intended for isolated test environments and logs a prominent warnin
 ## Pairing and token handling
 
 The persistent setup token and pairing code never appear in an HTTP or WebSocket
-URL. `portway pair` generates a uniformly random six-digit code and writes a
-`0600` record beside the token, normally `/var/lib/portway/token.pairing`. The
-record contains the exact expiry and an HMAC-SHA256 of the expiry and code; it
-does not contain the six-digit plaintext. The CLI can therefore issue a code
-without contacting or restarting the server, while the server can validate it
-against the shared protected state.
+URL. `portway pair` connects to a local Unix socket, normally
+`/run/portway/pair.sock`, and the running service checks the caller's UID using
+kernel-supplied peer credentials. UID 0, the socket-owning service account, and
+UIDs explicitly listed in `pairing_allowed_uids` may request a code. The socket
+path is connectable by local users so the service can perform that credential
+check; connecting alone grants no code or token access. The installer authorizes
+the invoking desktop user by default.
+
+After authorization, the service generates a uniformly random six-digit code and
+writes a `0600` record beside the token, normally
+`/var/lib/portway/token.pairing`. The record contains the exact expiry and an
+HMAC-SHA256 of the expiry and code, not the six-digit plaintext. The CLI receives
+only the temporary code and never reads the persistent setup token or pairing
+record.
 
 Only one pairing code is outstanding. Issuing another atomically replaces the
 record and invalidates the previous code. A successful exchange deletes the
@@ -50,8 +59,8 @@ in-memory credential and all sessions are replaced together.
 
 Six decimal digits provide one million possible codes, so online rate limiting
 is an essential part of the design. Pairing accepts eight total attempts per
-source IP in a one-minute window.
-Successful pairing clears that address's attempt window. Portway keeps at most
+source IP in a one-minute window. Successful pairing clears that address's
+attempt window. Portway keeps at most
 32 authenticated browser sessions in memory, while `max_clients` separately
 limits simultaneous controllers. Portway logs authentication outcomes but not
 submitted credentials, session values, typed text, or individual input events.
@@ -59,12 +68,14 @@ submitted credentials, session values, typed text, or individual input events.
 ## Normal authenticated login flow
 
 1. The operator starts Portway with token authentication, then runs
-   `portway pair` as the service user. The command loads the persistent setup
-   token, replaces any outstanding pairing record, and prints a protected
-   six-digit code without contacting or restarting the server.
+   `portway pair`. Installed systems automatically select
+   `/etc/portway/config.toml`. The command connects to the local pairing socket;
+   after authorizing its UID, the running service replaces any outstanding
+   pairing record and returns a six-digit code.
 2. The controller opens the Portway website. Static controller assets are public,
    so the pairing dialog can load before authentication. The user enters the
-   six-digit code shown by Portway.
+   six-digit code shown by Portway. A rejected or expired code leaves the dialog
+   open and displays an inline error associated with the code field.
 3. The page sends the code to `POST /api/pair`. The recovery setup
    token can be submitted through the same form. The request must have an
    accepted `Origin`, fit the body/credential bounds, and pass the per-IP

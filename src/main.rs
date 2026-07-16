@@ -10,6 +10,7 @@ use portway::{
     auth,
     config::{AuthMode, Cli, Command, Config, ServeOptions},
     input::{SharedBackend, create_backend},
+    local_pairing::{LocalPairingServer, request_pairing_code},
     server::{AppState, serve, serve_tls},
 };
 use tokio::net::TcpListener;
@@ -38,13 +39,7 @@ fn print_pairing_code(config_path: Option<std::path::PathBuf>) -> Result<()> {
     if config.auth_mode == AuthMode::Disabled {
         bail!("authentication is disabled; a pairing code is not required");
     }
-    let setup_token = auth::read_existing_token(&config.token_file)?;
-    let code = auth::create_pairing_code(
-        &setup_token,
-        &auth::pairing_code_path(&config.token_file),
-        config.pairing_code_ttl_seconds,
-    );
-    println!("{}", code?);
+    println!("{}", request_pairing_code(&config.pairing_socket)?);
     Ok(())
 }
 
@@ -60,6 +55,14 @@ fn print_token(config_path: Option<std::path::PathBuf>) -> Result<()> {
 
 async fn run(config: Config) -> Result<()> {
     let auth = auth::load_or_create(&config)?;
+    let pairing_server = if auth.authenticator.is_enabled() {
+        Some(LocalPairingServer::bind(
+            config.pairing_socket.clone(),
+            config.pairing_allowed_uids.clone(),
+        )?)
+    } else {
+        None
+    };
     let backend = create_backend(&config)?;
     let status = backend.status();
     let backend: SharedBackend = Arc::new(tokio::sync::Mutex::new(backend));
@@ -96,6 +99,14 @@ async fn run(config: Config) -> Result<()> {
     let bound = listener
         .local_addr()
         .context("failed to read listen address")?;
+    let pairing_task = pairing_server.map(|server| {
+        let pairing_auth = auth.authenticator.clone();
+        tokio::spawn(async move {
+            if let Err(error) = server.run(pairing_auth).await {
+                error!(%error, "local pairing service stopped");
+            }
+        })
+    });
 
     info!(config = %config.config_path.display(), "configuration loaded");
     info!(listen = %bound, "Portway server started");
@@ -107,6 +118,7 @@ async fn run(config: Config) -> Result<()> {
         authentication = if config.auth_mode == AuthMode::Token { "token" } else { "disabled" },
         token_file = %auth.token_path.display(),
         pairing_code_file = %auth.pairing_code_path.display(),
+        pairing_socket = %config.pairing_socket.display(),
         "authentication status"
     );
     if auth.newly_created {
@@ -131,6 +143,10 @@ async fn run(config: Config) -> Result<()> {
     } else {
         serve(listener, state, shutdown_signal()).await
     };
+    if let Some(task) = pairing_task {
+        task.abort();
+        let _ = task.await;
+    }
     info!("shutdown requested; releasing all input state");
     if let Err(error) = backend.lock().await.release_all() {
         error!(%error, "final input cleanup failed");

@@ -21,14 +21,16 @@ CLI flag > matching PORTWAY_* environment variable > TOML file > default
 
 `PORTWAY_CONFIG` and `--config` select the TOML file for every command. The
 other environment variables and configuration flags belong to `serve`; `token`
-and `pair` load their settings from the selected file and defaults. An explicitly
-selected file must exist. The implicit default file may be absent.
+and `pair` load their settings from the selected file and defaults.
 
-The default file is `$XDG_CONFIG_HOME/portway/config.toml`; if
-`XDG_CONFIG_HOME` is unset it is `$HOME/.config/portway/config.toml`, and if
-`HOME` is also unset it is `./portway.toml`. Unknown TOML fields are rejected.
-See [`config/portway.example.toml`](../config/portway.example.toml) for every
-file key.
+If `/etc/portway/config.toml` exists it is the implicit default, regardless of
+the current `HOME`; this keeps normal and `sudo` commands on the installed
+service configuration. Otherwise the default is
+`$XDG_CONFIG_HOME/portway/config.toml`, then `$HOME/.config/portway/config.toml`,
+then `./portway.toml`. Use `--config` or `PORTWAY_CONFIG` to override discovery.
+An explicitly selected file must exist; an implicit user-level file may be
+absent. Unknown TOML fields are rejected. See
+[`config/portway.example.toml`](../config/portway.example.toml) for every key.
 
 ## `serve`
 
@@ -42,6 +44,8 @@ during a clean shutdown.
 | `--port PORT` | `PORTWAY_PORT` / `port` | `2721` | TCP port, from 1 through 65535. |
 | `--auth-mode MODE` | `PORTWAY_AUTH_MODE` / `auth_mode` | `token` | `token` requires pairing; `disabled` permits any network peer to control the host. |
 | `--token-file PATH` | `PORTWAY_TOKEN_FILE` / `token_file` | `token` beside the resolved config file | Persistent 256-bit setup-token file. It is created securely on first authenticated `serve` or `token` use. |
+| `--pairing-socket PATH` | `PORTWAY_PAIRING_SOCKET` / `pairing_socket` | configured token path plus `.socket` | Local Unix socket through which `portway pair` asks the running service to issue a code. The installer uses `/run/portway/pair.sock`. |
+| `--pairing-allowed-uid UID[,UID...]` | `PORTWAY_PAIRING_ALLOWED_UIDS` / `pairing_allowed_uids` | empty | Additional local user IDs allowed to request codes. The socket owner and UID 0 are always allowed. May be repeated; CLI/environment values replace the TOML list. |
 | `--tls-cert PATH` | `PORTWAY_TLS_CERT` / `tls_cert` | unset | PEM certificate chain for native HTTPS; requires `--tls-key` or `tls_key`. |
 | `--tls-key PATH` | `PORTWAY_TLS_KEY` / `tls_key` | unset | PEM private key for native HTTPS; requires `--tls-cert` or `tls_cert`. |
 | `--pairing-code-ttl-seconds SECONDS` | `PORTWAY_PAIRING_CODE_TTL_SECONDS` / `pairing_code_ttl_seconds` | `300` | Pairing-code lifetime, from 30 through 3600 seconds. |
@@ -72,7 +76,7 @@ PORTWAY_PORT=3000 PORTWAY_LOG_LEVEL=debug portway serve
 the persistent token. It refuses to run when `auth_mode = "disabled"`.
 
 ```sh
-portway --config /etc/portway/config.toml token
+sudo -u portway portway token
 ```
 
 Run it as the same user and with the same configuration as the server. Printing
@@ -83,21 +87,22 @@ Options are the global `--config PATH` and `-h`/`--help` only.
 
 ## `pair`
 
-`portway pair` reads an existing setup token, creates a protected pairing record,
-and prints only a random six-digit code. It does not contact or restart the
-server and refuses to create a missing token. The running server must use the
-same token path and configuration to accept the code.
+`portway pair` connects to the configured local pairing socket and asks the
+running server to create a random six-digit code. It prints only that code. The
+server authorizes the caller from kernel-provided Unix peer credentials; the CLI
+does not read the setup token or pairing record.
 
 ```sh
-portway --config /etc/portway/config.toml pair
+portway pair
 ```
 
 Enter the code in the pairing dialog at the Portway website. It uses the
 configured pairing-code lifetime, five minutes by default, and can be exchanged
 once. Issuing a new code invalidates the previous one. The protected record is
 stored at the token path with `.pairing` appended and contains an expiry and HMAC,
-not the six-digit plaintext. The command fails when authentication is disabled
-because no pairing is needed.
+not the six-digit plaintext. The command fails when authentication is disabled,
+the service is not running, or the local UID is not authorized. Installed systems
+discover `/etc/portway/config.toml` automatically, including under `sudo`.
 
 Options are global `--config PATH` and `-h`/`--help` only.
 
@@ -120,6 +125,7 @@ when necessary and refuses to modify NixOS.
 | `--auth token|disabled` | Select token authentication or explicitly disable authentication; default `token`. |
 | `--accept-risk` | Required together with `--auth disabled`; otherwise the installer refuses the unsafe configuration. |
 | `--firewall auto|skip` | Add an absent rule to active ufw/firewalld when `auto`, or leave firewall policy untouched when `skip`; default `auto`. |
+| `--pair-user USER` | Authorize this local account to run `portway pair` without privilege elevation. Defaults to the invoking `sudo` user, the previously recorded pairing user during upgrade, or root. |
 | `--force-config` | Replace `/etc/portway/config.toml`, saving the previous file as `config.toml.bak`. Without it, upgrades preserve existing configuration and credentials. |
 | `--no-start` | Install files without enabling or starting the systemd service. |
 | `--yes` | Accept defaults and suppress interactive confirmation. |

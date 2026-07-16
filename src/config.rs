@@ -11,6 +11,7 @@ use serde::Deserialize;
 pub const DEFAULT_PORT: u16 = 2721;
 pub const DEFAULT_PAIRING_CODE_TTL_SECONDS: u64 = 300;
 pub const DEFAULT_SESSION_TTL_SECONDS: u64 = 43_200;
+pub const SYSTEM_CONFIG_PATH: &str = "/etc/portway/config.toml";
 
 #[derive(Debug, Parser)]
 #[command(name = "portway", version, about)]
@@ -46,6 +47,18 @@ pub struct ServeOptions {
 
     #[arg(long, env = "PORTWAY_TOKEN_FILE")]
     pub token_file: Option<PathBuf>,
+
+    /// Local Unix socket used by `portway pair`.
+    #[arg(long, env = "PORTWAY_PAIRING_SOCKET")]
+    pub pairing_socket: Option<PathBuf>,
+
+    /// Local user ID allowed to request pairing codes. May be repeated.
+    #[arg(
+        long = "pairing-allowed-uid",
+        value_delimiter = ',',
+        env = "PORTWAY_PAIRING_ALLOWED_UIDS"
+    )]
+    pub pairing_allowed_uids: Vec<u32>,
 
     /// PEM certificate chain for native HTTPS. Requires --tls-key.
     #[arg(long, env = "PORTWAY_TLS_CERT")]
@@ -110,6 +123,8 @@ pub struct Config {
     pub port: u16,
     pub auth_mode: AuthMode,
     pub token_file: PathBuf,
+    pub pairing_socket: PathBuf,
+    pub pairing_allowed_uids: Vec<u32>,
     pub tls_cert: Option<PathBuf>,
     pub tls_key: Option<PathBuf>,
     pub pairing_code_ttl_seconds: u64,
@@ -130,6 +145,8 @@ struct FileConfig {
     port: Option<u16>,
     auth_mode: Option<AuthMode>,
     token_file: Option<PathBuf>,
+    pairing_socket: Option<PathBuf>,
+    pairing_allowed_uids: Option<Vec<u32>>,
     tls_cert: Option<PathBuf>,
     tls_key: Option<PathBuf>,
     pairing_code_ttl_seconds: Option<u64>,
@@ -153,6 +170,23 @@ impl Config {
             .parent()
             .unwrap_or_else(|| Path::new("."))
             .join("token");
+        let token_file = cli
+            .token_file
+            .clone()
+            .or(file.token_file)
+            .unwrap_or(token_default);
+        let pairing_socket = cli
+            .pairing_socket
+            .clone()
+            .or(file.pairing_socket)
+            .unwrap_or_else(|| default_pairing_socket_path(&token_file));
+        let mut pairing_allowed_uids = if cli.pairing_allowed_uids.is_empty() {
+            file.pairing_allowed_uids.unwrap_or_default()
+        } else {
+            cli.pairing_allowed_uids.clone()
+        };
+        pairing_allowed_uids.sort_unstable();
+        pairing_allowed_uids.dedup();
 
         let config = Self {
             config_path,
@@ -162,11 +196,9 @@ impl Config {
                 .unwrap_or(IpAddr::V4(Ipv4Addr::UNSPECIFIED)),
             port: cli.port.or(file.port).unwrap_or(DEFAULT_PORT),
             auth_mode: cli.auth_mode.or(file.auth_mode).unwrap_or(AuthMode::Token),
-            token_file: cli
-                .token_file
-                .clone()
-                .or(file.token_file)
-                .unwrap_or(token_default),
+            token_file,
+            pairing_socket,
+            pairing_allowed_uids,
             tls_cert: cli.tls_cert.clone().or(file.tls_cert),
             tls_key: cli.tls_key.clone().or(file.tls_key),
             pairing_code_ttl_seconds: cli
@@ -248,13 +280,34 @@ impl Config {
 
 #[must_use]
 pub fn default_config_path() -> PathBuf {
-    if let Some(path) = env::var_os("XDG_CONFIG_HOME") {
-        return PathBuf::from(path).join("portway/config.toml");
+    discovered_config_path(
+        Path::new(SYSTEM_CONFIG_PATH).is_file(),
+        env::var_os("XDG_CONFIG_HOME").map(PathBuf::from),
+        env::var_os("HOME").map(PathBuf::from),
+    )
+}
+
+fn discovered_config_path(
+    system_config_exists: bool,
+    xdg_config_home: Option<PathBuf>,
+    home: Option<PathBuf>,
+) -> PathBuf {
+    if system_config_exists {
+        return PathBuf::from(SYSTEM_CONFIG_PATH);
     }
-    if let Some(home) = env::var_os("HOME") {
-        return PathBuf::from(home).join(".config/portway/config.toml");
+    if let Some(path) = xdg_config_home {
+        return path.join("portway/config.toml");
+    }
+    if let Some(home) = home {
+        return home.join(".config/portway/config.toml");
     }
     PathBuf::from("portway.toml")
+}
+
+fn default_pairing_socket_path(token_path: &Path) -> PathBuf {
+    let mut path = token_path.as_os_str().to_os_string();
+    path.push(".socket");
+    PathBuf::from(path)
 }
 
 fn read_file_config(path: &Path, required: bool) -> Result<FileConfig> {
@@ -300,7 +353,7 @@ mod tests {
         let path = dir.path().join("portway.toml");
         fs::write(
             &path,
-            "listen = \"127.0.0.1\"\nport = 3000\nmax_clients = 2\nbackend = \"mock\"\n",
+            "listen = \"127.0.0.1\"\nport = 3000\nmax_clients = 2\nbackend = \"mock\"\npairing_allowed_uids = [1001, 1000, 1001]\n",
         )
         .unwrap();
         let cli = ServeOptions {
@@ -314,6 +367,32 @@ mod tests {
         assert_eq!(config.port, 4000);
         assert_eq!(config.max_clients, 2);
         assert_eq!(config.backend, BackendKind::Mock);
+        assert_eq!(config.pairing_allowed_uids, [1000, 1001]);
+        assert_eq!(config.pairing_socket, dir.path().join("token.socket"));
+    }
+
+    #[test]
+    fn prefers_an_installed_system_config_then_user_locations() {
+        assert_eq!(
+            discovered_config_path(
+                true,
+                Some(PathBuf::from("/tmp/xdg")),
+                Some(PathBuf::from("/tmp/home"))
+            ),
+            PathBuf::from(SYSTEM_CONFIG_PATH)
+        );
+        assert_eq!(
+            discovered_config_path(
+                false,
+                Some(PathBuf::from("/tmp/xdg")),
+                Some(PathBuf::from("/tmp/home"))
+            ),
+            PathBuf::from("/tmp/xdg/portway/config.toml")
+        );
+        assert_eq!(
+            discovered_config_path(false, None, Some(PathBuf::from("/tmp/home"))),
+            PathBuf::from("/tmp/home/.config/portway/config.toml")
+        );
     }
 
     #[test]

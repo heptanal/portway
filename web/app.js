@@ -12,6 +12,7 @@ const ui = {
   authDialog: document.querySelector("#auth-dialog"),
   authForm: document.querySelector("#auth-form"),
   pairInput: document.querySelector("#pair-input"),
+  pairError: document.querySelector("#pair-error"),
   pairSubmit: document.querySelector("#pair-submit"),
   connection: document.querySelector("#connection"),
   statusText: document.querySelector("#status-text"),
@@ -57,6 +58,20 @@ function showToast(message) {
 function showAuth() {
   if (!ui.authDialog.open) ui.authDialog.showModal();
   setTimeout(() => ui.pairInput.focus(), 50);
+}
+
+function clearPairError() {
+  ui.pairError.textContent = "";
+  ui.pairError.hidden = true;
+  ui.pairInput.setAttribute("aria-invalid", "false");
+}
+
+function showPairError(message) {
+  ui.pairError.textContent = message;
+  ui.pairError.hidden = false;
+  ui.pairInput.setAttribute("aria-invalid", "true");
+  ui.pairInput.focus();
+  ui.pairInput.select();
 }
 
 function connect() {
@@ -193,6 +208,7 @@ ui.authForm.addEventListener("submit", async (event) => {
   event.preventDefault();
   const code = ui.pairInput.value.trim();
   if (!code) return;
+  clearPairError();
   ui.pairSubmit.disabled = true;
   setStatus("Pairing");
   try {
@@ -204,11 +220,14 @@ ui.authForm.addEventListener("submit", async (event) => {
     connect();
   } catch (error) {
     setStatus("Pairing required", "error");
+    showPairError(error.message);
     showToast(error.message);
   } finally {
     ui.pairSubmit.disabled = false;
   }
 });
+
+ui.pairInput.addEventListener("input", clearPairError);
 
 ui.connection.addEventListener("click", async () => {
   hasSession = false;
@@ -222,6 +241,7 @@ ui.connection.addEventListener("click", async () => {
     showToast("Server logout failed; the session may remain active.");
   }
   ui.pairInput.value = "";
+  clearPairError();
   setStatus("Pairing required", "error");
   showAuth();
 });

@@ -489,6 +489,15 @@ details summary {
   background: var(--surface-strong);
 }
 
+.auth-dialog input[aria-invalid="true"] {
+  border-color: var(--warning);
+}
+
+.auth-dialog .auth-error {
+  color: var(--warning);
+  font-weight: 700;
+}
+
 .auth-dialog button {
   min-height: 50px;
   border: 0;
@@ -546,4 +555,3 @@ details summary {
     grid-template-columns: repeat(4, 1fr);
   }
 }
-
