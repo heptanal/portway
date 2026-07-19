@@ -4,7 +4,7 @@ Portway provides two supported installation paths:
 
 - conventional systemd Linux uses the guided `scripts/install-linux` and
   `scripts/uninstall-linux` commands;
-- NixOS uses the included locked flake/module and manages the service through a
+- NixOS uses the included flake/module and manages the service through a
   normal system rebuild.
 
 The result is a dedicated unprivileged `portway` service, enabled at boot, with

@@ -1,9 +1,9 @@
 # Dependency policy
 
-Portway targets the current project toolchain, Rust 1.97.0. `Cargo.lock` is
-committed and documented build commands use `--locked` for reproducibility.
-The Nix flake locks both nixpkgs and `oxalica/rust-overlay`; the overlay is used
-only to obtain that exact Rust toolchain when the distribution package set lags.
+Portway builds with the latest stable Rust release. `Cargo.lock` is committed and
+documented build commands use `--locked` for reproducible dependency resolution.
+The Nix flake uses `oxalica/rust-overlay` to select the latest stable compiler
+available from its inputs.
 
 Core choices are limited to mature ecosystem components:
 

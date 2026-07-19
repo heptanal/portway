@@ -30,7 +30,7 @@
             inherit system;
             overlays = [ rust-overlay.overlays.default ];
           };
-          toolchain = pkgs.rust-bin.stable."1.97.0".minimal;
+          toolchain = pkgs.rust-bin.stable.latest.minimal;
           rustPlatform = pkgs.makeRustPlatform {
             cargo = toolchain;
             rustc = toolchain;
@@ -42,6 +42,21 @@
         {
           inherit portway;
           default = portway;
+        }
+      );
+
+      devShells = forAllSystems (
+        system:
+        let
+          pkgs = import nixpkgs {
+            inherit system;
+            overlays = [ rust-overlay.overlays.default ];
+          };
+        in
+        {
+          default = pkgs.mkShell {
+            packages = [ pkgs.rust-bin.stable.latest.default ];
+          };
         }
       );
 

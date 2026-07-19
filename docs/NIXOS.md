@@ -4,11 +4,11 @@ Portway includes a NixOS package and service module. The generic installer
 intentionally refuses NixOS because files written imperatively into `/usr/local`,
 `/etc/systemd`, or `/etc/udev` would not be a reliable declarative installation.
 
-## Declarative service with the pinned toolchain
+## Declarative service
 
-The recommended path is the included flake. It builds with the pinned Rust 1.97
-toolchain even when nixpkgs temporarily lags by a release. Add Portway to the
-host flake inputs and module list:
+The recommended path is the included flake. It builds with the latest stable
+Rust release exposed by `rust-overlay`. Add Portway to the host flake inputs and
+module list:
 
 ```nix
 {
@@ -115,9 +115,9 @@ the LAN device name is stable. Authentication defaults to `token`; setting
 ## Plain module and package overrides
 
 It is also possible to import `packaging/nixos/portway.nix` directly. Its default
-package then uses the importing nixpkgs `rustPlatform`; this works only when that
-compiler satisfies Portway's declared Rust version. Otherwise use the flake above
-or override `services.portway.package` with an equivalent derivation:
+package then uses the importing nixpkgs `rustPlatform`. Use the flake above to
+build with the latest stable Rust release, or override
+`services.portway.package` with an equivalent derivation:
 
 ```nix
 services.portway.package = myPackages.portway;
@@ -137,20 +137,17 @@ directory manually only when intentionally purging pairing state.
 
 ## Development and real-device test
 
-When nixpkgs lags the pinned compiler, use an ephemeral rustup/linker shell:
+Use the flake's development shell for the latest stable Rust release:
 
 ```sh
-nix shell nixpkgs#rustup nixpkgs#gcc -c \
-  rustup run 1.97.0 cargo test --all-targets --locked
-nix shell nixpkgs#rustup nixpkgs#gcc -c \
-  rustup run 1.97.0 cargo build --release --locked
+nix develop path:/path/to/Portway -c cargo test --all-targets --locked
+nix develop path:/path/to/Portway -c cargo build --release --locked
 ```
 
 After the module has applied uinput access, the opt-in real-device test is:
 
 ```sh
-nix shell nixpkgs#rustup nixpkgs#gcc -c \
-  rustup run 1.97.0 cargo test \
+nix develop path:/path/to/Portway -c cargo test \
   input::linux::tests::creates_real_uinput_devices -- --ignored --nocapture
 ```
 

@@ -2,10 +2,11 @@
 
 ## Stack decision
 
-Portway uses the pinned current Rust 1.97 toolchain with Tokio, Axum, Serde, and tracing. The controller is
-plain HTML, CSS, and JavaScript embedded with `include_str!`. This gives the
-project one deployable binary, no runtime asset or package-manager dependency,
-strong message validation, and a network stack that remains testable on macOS.
+Portway uses the latest stable Rust release with Tokio, Axum, Serde, and tracing.
+The controller is plain HTML, CSS, and JavaScript embedded with `include_str!`.
+This gives the project one deployable binary, no runtime asset or package-manager
+dependency, strong message validation, and a network stack that remains testable
+on macOS.
 
 The dependency set is deliberately small and consists of widely used,
 permissively licensed Rust libraries. Linux device access uses a direct `libc`

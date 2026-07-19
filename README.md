@@ -24,8 +24,8 @@ in that group is powerful because it permits synthetic input.
 
 ## Quick start on Linux
 
-Portway currently targets Rust 1.97.0. On a conventional systemd distribution,
-build and run the guided installer:
+Portway builds with the latest stable Rust release. On a conventional systemd
+distribution, build and run the guided installer:
 
 ```sh
 cargo build --release --locked
@@ -38,8 +38,8 @@ the kernel module at every boot, handles active `ufw`/`firewalld` when requested
 starts Portway, and prints a temporary six-digit pairing code. Details and
 unattended flags are in [docs/INSTALL.md](docs/INSTALL.md).
 
-NixOS must remain declarative. Add the local checkout as a flake input so the
-package uses the same pinned Rust 1.97.0 toolchain as development:
+NixOS must remain declarative. Add the local checkout as a flake input; the
+included package uses the latest stable Rust release:
 
 ```nix
 {
@@ -161,17 +161,16 @@ curl --insecure --include https://localhost:2721/healthz
 
 ## Development and testing on Linux
 
-To sync the source and build over SSH without moving the macOS toolchain:
+To sync the source and build over SSH without compiling locally on macOS:
 
 ```sh
 scripts/deploy-linux user@linux-host
 ```
 
 This uses `rsync`, then runs `cargo build --release --locked` remotely in
-`~/portway-build`. Rust 1.97.0, Cargo, `rsync`, and `/dev/uinput` must be present.
-On NixOS, where the packaged compiler or default user environment may not meet
-those assumptions, use the reproducible rustup/linker commands and declarative
-permission setup in [docs/NIXOS.md](docs/NIXOS.md).
+`~/portway-build`. The latest stable Rust release, Cargo, `rsync`, and
+`/dev/uinput` must be present. On NixOS, use the included development shell and
+declarative permission setup in [docs/NIXOS.md](docs/NIXOS.md).
 
 After configuring the udev rule and refreshing group membership, the exact first
 real-device test is:
